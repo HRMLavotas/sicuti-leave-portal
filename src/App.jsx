@@ -9,6 +9,7 @@ import {
 import { Toaster } from "@/components/ui/toaster";
 import Layout from "@/components/Layout";
 import Login from "@/pages/Login";
+import Landing from "@/pages/Landing";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ConnectionHealthChecker from "@/components/ConnectionHealthChecker";
@@ -45,6 +46,7 @@ function App() {
           <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
             <Routes>
               {/* Public routes - no layout */}
+              <Route path="/" element={<Landing />} />
               <Route path="/login" element={<Login />} />
 
               {/* Protected routes - with layout */}
@@ -55,7 +57,6 @@ function App() {
                     <Layout>
                       <Suspense fallback={<PageLoader />}>
                         <Routes>
-                          <Route path="/" element={<Employees />} />
                           <Route path="/employees" element={<Employees />} />
                           <Route
                             path="/user-management"

@@ -20,7 +20,7 @@ const Login = () => {
   // Redirect if already authenticated
   useEffect(() => {
     if (AuthManager.isAuthenticated()) {
-      navigate("/", { replace: true });
+      navigate("/employees", { replace: true });
     }
   }, [navigate]);
 
@@ -40,7 +40,7 @@ const Login = () => {
         description: "Selamat datang di SiCuti - Binalavotas",
       });
 
-      navigate("/", { replace: true });
+      navigate("/employees", { replace: true });
     } catch (error) {
       setError(error.message);
       toast({

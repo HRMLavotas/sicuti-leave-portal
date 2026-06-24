@@ -11,7 +11,7 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
 
   // Check role-based access if required
   if (requiredRole && !AuthManager.hasRole(requiredRole)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/employees" replace />;
   }
 
   return children;
