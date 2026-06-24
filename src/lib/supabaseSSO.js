@@ -112,11 +112,13 @@ export const getAuthUser = async () => {
 };
 
 /**
- * Logout dari SIMPEL dan redirect kembali ke SiCuti landing page
+ * Logout dari SIMPEL dan redirect kembali ke Portal SIPANDAI
  */
 export const signOut = async () => {
   await supabaseAuth.auth.signOut();
-  window.location.href = "/";
+  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  const portalUrl = isLocal ? "http://localhost:8080/portal" : "https://sipandai.site/portal";
+  window.location.href = portalUrl;
 };
 
 /**
