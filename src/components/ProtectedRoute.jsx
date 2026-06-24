@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { redirectToSimpelLogin, getAuthSession } from "@/lib/supabaseSSO";
+import { AuthManager } from "@/lib/auth";
 
 const ProtectedRoute = ({ children, requiredRole = null }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(null); // null = loading
@@ -7,7 +8,8 @@ const ProtectedRoute = ({ children, requiredRole = null }) => {
   useEffect(() => {
     const checkAuth = async () => {
       const session = await getAuthSession();
-      setIsAuthenticated(!!session);
+      const hasLocalSession = AuthManager.isAuthenticated();
+      setIsAuthenticated(!!session || hasLocalSession);
     };
     checkAuth();
   }, []);

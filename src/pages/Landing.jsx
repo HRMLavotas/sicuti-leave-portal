@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { redirectToSimpelLogin, getAuthSession, isSSOConfigured, getConfigStatus } from "@/lib/supabaseSSO";
+import { AuthManager } from "@/lib/auth";
 import {
   CalendarCheck,
   ShieldCheck,
@@ -44,8 +45,14 @@ export default function Landing() {
 
     const checkSession = async () => {
       const session = await getAuthSession();
-      if (session) {
-        navigate("/employees", { replace: true });
+      const hasLocalSession = AuthManager.isAuthenticated();
+      if (session || hasLocalSession) {
+        const user = AuthManager.getUserSession();
+        if (user && user.role === "employee") {
+          navigate("/leave-requests", { replace: true });
+        } else {
+          navigate("/employees", { replace: true });
+        }
       }
     };
     checkSession();
