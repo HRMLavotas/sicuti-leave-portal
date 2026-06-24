@@ -73,21 +73,61 @@ const AuthCallback = () => {
 
         let finalUser = localUser;
 
-        // 1. Ambil data profiles dari database SIMPEL
-        const { data: profile, error: profileErr } = await supabaseSimpelAdmin
+        // 1. Ambil data profiles dari database SIMPEL (coba by email dulu, lalu by auth UUID)
+        let profile = null;
+        const { data: profileByEmail, error: profileErrByEmail } = await supabaseSimpelAdmin
           .from("profiles")
           .select("*")
           .eq("email", sessionUser?.email)
           .maybeSingle();
 
-        if (profileErr) {
-          console.error("[SSO] Gagal mengambil profil dari SIMPEL:", profileErr.message);
+        if (profileErrByEmail) {
+          console.error("[SSO] Gagal mengambil profil dari SIMPEL (by email):", profileErrByEmail.message);
+        }
+
+        profile = profileByEmail;
+
+        // Fallback: cari profile by auth UUID (profiles.id = auth.users.id di SIMPEL)
+        if (!profile && sessionUser?.id) {
+          const { data: profileById, error: profileErrById } = await supabaseSimpelAdmin
+            .from("profiles")
+            .select("*")
+            .eq("id", sessionUser.id)
+            .maybeSingle();
+
+          if (profileErrById) {
+            console.error("[SSO] Gagal mengambil profil dari SIMPEL (by id):", profileErrById.message);
+          }
+          profile = profileById;
         }
 
         // 2. Ambil user_roles dari database SIMPEL
         let userRole = "employee"; // default role
         let userNip = null;
-        if (profile) {
+        
+        // Coba ambil role menggunakan sessionUser.id (auth UUID) terlebih dahulu
+        if (sessionUser?.id) {
+          const { data: roleById, error: roleErrById } = await supabaseSimpelAdmin
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", sessionUser.id)
+            .maybeSingle();
+
+          if (roleErrById) {
+            console.error("[SSO] Gagal mengambil role dari SIMPEL (by auth id):", roleErrById.message);
+          } else if (roleById) {
+            // Pemetaan role SIMPEL -> SiCuti
+            if (roleById.role === "admin_pusat" || roleById.role === "admin_pimpinan" || roleById.role === "admin_super") {
+              userRole = "master_admin";
+            } else if (roleById.role === "admin_unit") {
+              userRole = "admin_unit";
+            }
+            console.log("[SSO] Role ditemukan (by auth id):", roleById.role, "-> SiCuti role:", userRole);
+          }
+        }
+
+        // Fallback: coba ambil role via profile.id jika belum ditemukan
+        if (userRole === "employee" && profile) {
           const { data: roleData, error: roleErr } = await supabaseSimpelAdmin
             .from("user_roles")
             .select("role")
@@ -95,7 +135,7 @@ const AuthCallback = () => {
             .maybeSingle();
           
           if (roleErr) {
-            console.error("[SSO] Gagal mengambil role dari SIMPEL:", roleErr.message);
+            console.error("[SSO] Gagal mengambil role dari SIMPEL (by profile.id):", roleErr.message);
           } else if (roleData) {
             // Pemetaan role SIMPEL -> SiCuti
             if (roleData.role === "admin_pusat" || roleData.role === "admin_pimpinan" || roleData.role === "admin_super") {
@@ -103,7 +143,22 @@ const AuthCallback = () => {
             } else if (roleData.role === "admin_unit") {
               userRole = "admin_unit";
             }
+            console.log("[SSO] Role ditemukan (by profile.id):", roleData.role, "-> SiCuti role:", userRole);
           }
+        }
+
+        // Fallback terakhir: cek user_metadata dari token JWT
+        if (userRole === "employee" && sessionUser?.user_metadata?.role) {
+          const metaRole = sessionUser.user_metadata.role;
+          if (metaRole === "admin_pusat" || metaRole === "admin_pimpinan" || metaRole === "admin_super") {
+            userRole = "master_admin";
+          } else if (metaRole === "admin_unit") {
+            userRole = "admin_unit";
+          }
+          console.log("[SSO] Role dari user_metadata:", metaRole, "-> SiCuti role:", userRole);
+        }
+
+        if (profile) {
           userNip = profile.nip || null;
         }
 
