@@ -3,7 +3,7 @@ import {
   BrowserRouter as Router,
   Routes,
   Route,
-  useRoutes,
+  Navigate,
 } from "react-router-dom";
 
 import { Toaster } from "@/components/ui/toaster";
@@ -14,6 +14,7 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ConnectionHealthChecker from "@/components/ConnectionHealthChecker";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
+import { AuthManager } from "@/lib/auth";
 import "@/utils/removeDebugButton"; // Remove debug button
 
 // Lazy load heavy pages for better performance
@@ -21,6 +22,7 @@ const Employees = lazy(() => import("@/pages/Employees"));
 const UserManagement = lazy(() => import("@/pages/UserManagement"));
 const LeaveRequests = lazy(() => import("@/pages/LeaveRequests"));
 const BatchLeaveProposals = lazy(() => import("@/pages/BatchLeaveProposals"));
+const LeaveProposals = lazy(() => import("@/pages/LeaveProposals"));
 const LeaveHistoryPage = lazy(() => import("@/pages/LeaveHistoryPage"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const DocxSuratKeterangan = lazy(() => import("@/pages/DocxSuratKeterangan"));
@@ -37,6 +39,19 @@ const PageLoader = () => (
     </div>
   </div>
 );
+
+/**
+ * RoleGuard: Membatasi akses halaman berdasarkan role pengguna.
+ * Jika user dengan role 'employee' mencoba mengakses halaman admin,
+ * akan diredirect ke /leave-requests.
+ */
+const RoleGuard = ({ children, blockedRoles = [] }) => {
+  const user = AuthManager.getUserSession();
+  if (user && blockedRoles.includes(user.role)) {
+    return <Navigate to="/leave-requests" replace />;
+  }
+  return children;
+};
 
 function App() {
   return (
@@ -57,33 +72,56 @@ function App() {
                     <Layout>
                       <Suspense fallback={<PageLoader />}>
                         <Routes>
-                          <Route path="/employees" element={<Employees />} />
-                          <Route
-                            path="/user-management"
-                            element={<UserManagement />}
-                          />
+                          {/* Admin-only routes (blocked for employee) */}
+                          <Route path="/employees" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <Employees />
+                            </RoleGuard>
+                          } />
+                          <Route path="/user-management" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <UserManagement />
+                            </RoleGuard>
+                          } />
+                          <Route path="/batch-leave-proposals" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <BatchLeaveProposals />
+                            </RoleGuard>
+                          } />
+                          <Route path="/reports" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <Reports />
+                            </RoleGuard>
+                          } />
+                          <Route path="/surat-keterangan" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <DocxSuratKeterangan />
+                            </RoleGuard>
+                          } />
+                          <Route path="/template-management" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <DocxTemplateManagement />
+                            </RoleGuard>
+                          } />
+                          <Route path="/settings" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <Settings />
+                            </RoleGuard>
+                          } />
+
+                          {/* Routes accessible by all roles (including employee) */}
                           <Route
                             path="/leave-requests"
                             element={<LeaveRequests />}
                           />
                           <Route
-                            path="/batch-leave-proposals"
-                            element={<BatchLeaveProposals />}
+                            path="/leave-proposals"
+                            element={<LeaveProposals />}
                           />
                           <Route
                             path="/leave-history"
                             element={<LeaveHistoryPage />}
                           />
-                          <Route path="/reports" element={<Reports />} />
-                          <Route
-                            path="/surat-keterangan"
-                            element={<DocxSuratKeterangan />}
-                          />
-                          <Route
-                            path="/template-management"
-                            element={<DocxTemplateManagement />}
-                          />
-                          <Route path="/settings" element={<Settings />} />
                           {import.meta.env.VITE_TEMPO && (
                             <Route path="/tempobook/*" />
                           )}

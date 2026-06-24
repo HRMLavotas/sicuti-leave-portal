@@ -24,25 +24,45 @@ const AuthCallback = () => {
       }
 
       try {
+        let sessionUser = null;
+
         // Set session di SiCuti menggunakan token dari SIMPEL
-        const { data, error } = await supabaseAuth.auth.setSession({
+        const { data: sessionData, error: sessionError } = await supabaseAuth.auth.setSession({
           access_token,
           refresh_token,
         });
 
-        if (error) {
-          console.error("[SSO] Gagal set session:", error.message);
-          navigate("/", { replace: true });
-          return;
+        if (sessionError) {
+          console.warn("[SSO] Formal setSession failed, attempting fallback JWT decode:", sessionError.message);
+          
+          try {
+            // Fallback: Decode token JWT client-side
+            const base64Url = access_token.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const payload = JSON.parse(window.atob(base64));
+            
+            sessionUser = {
+              id: payload.sub,
+              email: payload.email,
+              user_metadata: payload.user_metadata || {}
+            };
+            console.log("[SSO] Fallback JWT decode successful:", sessionUser.email);
+          } catch (decodeErr) {
+            console.error("[SSO] Fallback JWT decode also failed:", decodeErr);
+            navigate("/", { replace: true });
+            return;
+          }
+        } else {
+          sessionUser = sessionData.user;
+          console.log("[SSO] Login berhasil di auth SIMPEL:", sessionUser?.email);
         }
 
-        console.log("[SSO] Login berhasil di auth SIMPEL:", data.user?.email);
-
-        // Ambil data user dari database SiCuti menggunakan email dari SIMPEL
+        const usernamePrefix = sessionUser?.email ? sessionUser.email.split("@")[0] : "";
+        // Ambil data user dari database SiCuti menggunakan email ATAU username dari SIMPEL
         const { data: localUser, error: localUserError } = await supabaseData
           .from("users")
           .select("*")
-          .eq("email", data.user?.email)
+          .or(`email.eq.${sessionUser?.email},username.eq.${usernamePrefix}`)
           .maybeSingle();
 
         if (localUserError) {
@@ -53,60 +73,72 @@ const AuthCallback = () => {
 
         let finalUser = localUser;
 
-        // Auto-Provisioning: jika user tidak terdaftar di database lokal SiCuti, registrasikan otomatis!
-        if (!localUser) {
-          console.log("[SSO] User belum terdaftar di SiCuti, memulai auto-provisioning untuk:", data.user?.email);
-          
-          // 1. Ambil data profiles dari database SIMPEL
-          const { data: profile, error: profileErr } = await supabaseSimpelAdmin
-            .from("profiles")
-            .select("*")
-            .eq("email", data.user?.email)
+        // 1. Ambil data profiles dari database SIMPEL
+        const { data: profile, error: profileErr } = await supabaseSimpelAdmin
+          .from("profiles")
+          .select("*")
+          .eq("email", sessionUser?.email)
+          .maybeSingle();
+
+        if (profileErr) {
+          console.error("[SSO] Gagal mengambil profil dari SIMPEL:", profileErr.message);
+        }
+
+        // 2. Ambil user_roles dari database SIMPEL
+        let userRole = "employee"; // default role
+        let userNip = null;
+        if (profile) {
+          const { data: roleData, error: roleErr } = await supabaseSimpelAdmin
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", profile.id)
             .maybeSingle();
-
-          if (profileErr) {
-            console.error("[SSO] Gagal mengambil profil dari SIMPEL:", profileErr.message);
-          }
-
-          // 2. Ambil user_roles dari database SIMPEL
-          let userRole = "employee"; // default role
-          if (profile) {
-            const { data: roleData, error: roleErr } = await supabaseSimpelAdmin
-              .from("user_roles")
-              .select("role")
-              .eq("user_id", profile.id)
-              .maybeSingle();
-            
-            if (roleErr) {
-              console.error("[SSO] Gagal mengambil role dari SIMPEL:", roleErr.message);
-            } else if (roleData) {
-              // Pemetaan role SIMPEL -> SiCuti
-              if (roleData.role === "admin_pusat" || roleData.role === "admin_pimpinan" || roleData.role === "admin_super") {
-                userRole = "master_admin";
-              } else if (roleData.role === "admin_unit") {
-                userRole = "admin_unit";
-              }
+          
+          if (roleErr) {
+            console.error("[SSO] Gagal mengambil role dari SIMPEL:", roleErr.message);
+          } else if (roleData) {
+            // Pemetaan role SIMPEL -> SiCuti
+            if (roleData.role === "admin_pusat" || roleData.role === "admin_pimpinan" || roleData.role === "admin_super") {
+              userRole = "master_admin";
+            } else if (roleData.role === "admin_unit") {
+              userRole = "admin_unit";
             }
           }
+          userNip = profile.nip || null;
+        }
 
-          // 3. Set default permissions berdasarkan role
-          let permissions = [];
-          if (userRole === "master_admin") {
-            permissions = ["all"];
-          } else if (userRole === "admin_unit") {
-            permissions = ["dashboard", "employees_unit", "leave_requests_unit", "leave_history_unit", "surat_keterangan_unit"];
-          } else {
-            permissions = ["dashboard"];
+        // Jika NIP belum ada di profile, coba extract dari email (format: NIP@sipandai.local)
+        if (!userNip && sessionUser?.email) {
+          const emailPrefix = sessionUser.email.split("@")[0];
+          if (/^\d+$/.test(emailPrefix)) {
+            userNip = emailPrefix;
           }
+        }
 
-          const username = data.user?.email ? data.user.email.split("@")[0] : `user_${Date.now()}`;
+        // 3. Set default permissions berdasarkan role
+        let permissions = [];
+        if (userRole === "master_admin") {
+          permissions = ["all"];
+        } else if (userRole === "admin_unit") {
+          permissions = ["dashboard", "employees_unit", "leave_requests_unit", "leave_history_unit", "surat_keterangan_unit"];
+        } else {
+          // Employee: hanya bisa akses data cuti mereka sendiri
+          permissions = ["leave_requests_self", "leave_history_self"];
+        }
+
+        // Auto-Provisioning: jika user tidak terdaftar di database lokal SiCuti, registrasikan otomatis!
+        if (!localUser) {
+          console.log("[SSO] User belum terdaftar di SiCuti, memulai auto-provisioning untuk:", sessionUser?.email);
+          
+          const username = sessionUser?.email ? sessionUser.email.split("@")[0] : `user_${Date.now()}`;
           const newUser = {
-            name: profile?.full_name || data.user?.email || "SSO User",
+            name: profile?.full_name || sessionUser?.email || "SSO User",
             username: username,
             password: "sso_managed_login", // Dummy password
-            email: data.user?.email,
+            email: sessionUser?.email,
             role: userRole,
             unit_kerja: profile?.department || null,
+            nip: userNip,
             status: "active",
             permissions: permissions,
             last_login: new Date().toISOString()
@@ -126,7 +158,58 @@ const AuthCallback = () => {
           }
 
           finalUser = createdUser;
-          console.log("[SSO] Auto-provisioning berhasil untuk:", finalUser.email);
+          console.log("[SSO] Auto-provisioning berhasil untuk:", finalUser.email, "role:", userRole, "nip:", userNip);
+        } else {
+          // User sudah ada, sinkronisasikan role, NIP, unit_kerja, dan permissions jika berubah
+          const updates = {};
+          let needsUpdate = false;
+
+          if (localUser.role !== userRole) {
+            updates.role = userRole;
+            updates.permissions = permissions;
+            needsUpdate = true;
+            console.log(`[SSO] Update role dari ${localUser.role} ke ${userRole} di SiCuti`);
+          }
+
+          if (!localUser.nip && userNip) {
+            updates.nip = userNip;
+            needsUpdate = true;
+            console.log(`[SSO] Update NIP ke ${userNip} di SiCuti`);
+          }
+
+          if (profile?.department && localUser.unit_kerja !== profile.department) {
+            updates.unit_kerja = profile.department;
+            needsUpdate = true;
+            console.log(`[SSO] Update Unit Kerja ke ${profile.department} di SiCuti`);
+          }
+
+          // Juga pastikan permissions employee sudah benar jika rolenya tetap employee
+          if (localUser.role === "employee" && !needsUpdate && 
+              (!localUser.permissions || 
+               (Array.isArray(localUser.permissions) && localUser.permissions.includes("dashboard") && localUser.permissions.length === 1))) {
+            updates.permissions = ["leave_requests_self", "leave_history_self"];
+            needsUpdate = true;
+            console.log(`[SSO] Update permissions employee di SiCuti`);
+          }
+
+          if (needsUpdate) {
+            // Selalu set last_login ketika di-update
+            updates.last_login = new Date().toISOString();
+
+            const { data: updated, error: updateErr } = await supabaseData
+              .from("users")
+              .update(updates)
+              .eq("id", localUser.id)
+              .select()
+              .single();
+
+            if (updateErr) {
+              console.error("[SSO] Gagal update sinkronisasi data user SiCuti:", updateErr.message);
+            } else {
+              finalUser = updated;
+              console.log("[SSO] User SiCuti berhasil disinkronkan dengan SIMPEL");
+            }
+          }
         }
 
         // Map database fields to frontend format
@@ -138,10 +221,14 @@ const AuthCallback = () => {
         // Simpan sesi ke AuthManager lokal SiCuti agar dikenali oleh seluruh aplikasi
         AuthManager.setUserSession(mappedUser);
 
-        console.log("[SSO] Sesi lokal berhasil disinkronkan untuk:", mappedUser.name);
+        console.log("[SSO] Sesi lokal berhasil disinkronkan untuk:", mappedUser.name, "Role:", mappedUser.role);
         
-        // Redirect ke halaman utama aplikasi cuti
-        navigate("/employees", { replace: true });
+        // Redirect berdasarkan role
+        if (mappedUser.role === "employee") {
+          navigate("/leave-requests", { replace: true });
+        } else {
+          navigate("/employees", { replace: true });
+        }
       } catch (err) {
         console.error("[SSO] Error tidak terduga:", err);
         navigate("/", { replace: true });

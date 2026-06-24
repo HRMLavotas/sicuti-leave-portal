@@ -6,20 +6,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { useAuth } from "@/hooks/useAuth";
+import { AuthManager } from "@/lib/auth";
 import { useEmployeeData } from "@/hooks/useEmployeeData";
 import { useLeaveTypes } from "@/hooks/useLeaveTypes";
 import AutocompleteInput from "@/components/ui/AutocompleteInput";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Plus, Trash2, Users } from "lucide-react";
-import { format, differenceInDays, addDays } from "date-fns";
+import { CalendarIcon, Plus, Trash2, Users, FileText } from "lucide-react";
+import { format, differenceInDays } from "date-fns";
 import { id } from "date-fns/locale";
 import { validateLeaveProposal, validateEmployeeLeaveItem, sanitizeProposalData, checkLeaveConflicts } from "@/utils/leaveProposalValidation";
+import { supabase } from "@/lib/supabaseClient";
 
 const LeaveProposalForm = ({ onSubmit, onCancel }) => {
   const { toast } = useToast();
-  const { profile: currentUser } = useAuth();
+  const currentUser = AuthManager.getUserSession();
+  const isEmployee = currentUser?.role === 'employee';
   
   // Dynamic year calculation
   const currentYear = useMemo(() => new Date().getFullYear(), []);
@@ -39,10 +41,52 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
     start_date: "",
     end_date: "",
     days_requested: 0,
-    leave_quota_year: currentYear, // Dynamic year
+    leave_quota_year: currentYear,
     reason: "",
     address_during_leave: "",
   });
+
+  // Load employee data for self if employee role
+  useEffect(() => {
+    if (isEmployee && currentUser?.nip) {
+      const getSelfEmployee = async () => {
+        try {
+          const { data, error } = await supabase
+            .from("employees")
+            .select("*")
+            .eq("nip", currentUser.nip)
+            .maybeSingle();
+            
+          if (error) throw error;
+          
+          if (data) {
+            setCurrentLeaveItem(prev => ({
+              ...prev,
+              employee_id: data.id,
+              employee_name: data.name,
+              employee_nip: data.nip,
+              employee_department: data.department,
+              employee_position: data.position_name || "",
+            }));
+            setProposalTitle(`Pengajuan Cuti - ${data.name}`);
+          } else {
+            console.warn("No employee record found in SiCuti database for NIP:", currentUser.nip);
+            // Fallback from session data
+            setCurrentLeaveItem(prev => ({
+              ...prev,
+              employee_name: currentUser.name || "Pegawai",
+              employee_nip: currentUser.nip,
+              employee_department: currentUser.unitKerja || currentUser.unit_kerja || "",
+            }));
+            setProposalTitle(`Pengajuan Cuti - ${currentUser.name}`);
+          }
+        } catch (err) {
+          console.error("Error fetching self employee record:", err);
+        }
+      };
+      getSelfEmployee();
+    }
+  }, [isEmployee, currentUser]);
 
   // Data hooks
   const { displayedEmployees, isLoading: loadingEmployees } = useEmployeeData("", "", "", "", "", 1);
@@ -81,7 +125,7 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
         employee_name: employee.name,
         employee_nip: employee.nip,
         employee_department: employee.department,
-        employee_position: employee.position_name,
+        employee_position: employee.position_name || "",
       }));
     }
   };
@@ -142,7 +186,7 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
       start_date: "",
       end_date: "",
       days_requested: 0,
-      leave_quota_year: currentYear, // Dynamic year
+      leave_quota_year: currentYear,
       reason: "",
       address_during_leave: "",
     });
@@ -157,11 +201,31 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
 
   const handleSubmitProposal = async () => {
     try {
+      let finalEmployees = selectedEmployees;
+      
+      if (isEmployee) {
+        // Validate single employee item for self
+        const validationErrors = validateEmployeeLeaveItem(currentLeaveItem);
+        if (validationErrors.length > 0) {
+          toast({
+            title: "Error",
+            description: validationErrors[0],
+            variant: "destructive"
+          });
+          return;
+        }
+        finalEmployees = [currentLeaveItem];
+      }
+
+      const proposerUnit = isEmployee 
+        ? currentLeaveItem.employee_department 
+        : (currentUser.unitKerja || currentUser.unit_kerja || "Unknown");
+
       const proposalData = {
-        title: proposalTitle,
+        title: proposalTitle || `Pengajuan Cuti - ${currentLeaveItem.employee_name}`,
         notes: notes,
-        employees: selectedEmployees,
-        proposer_unit: currentUser.unitKerja,
+        employees: finalEmployees,
+        proposer_unit: proposerUnit,
       };
 
       // Validate entire proposal
@@ -181,75 +245,102 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
       await onSubmit(sanitizedData);
       
       // Reset form
-      setProposalTitle("");
-      setNotes("");
-      setSelectedEmployees([]);
-      
-      toast({ title: "Success", description: "Usulan cuti berhasil dibuat" });
+      if (!isEmployee) {
+        setProposalTitle("");
+        setNotes("");
+        setSelectedEmployees([]);
+      }
     } catch (error) {
       console.error("Error submitting proposal:", error);
       toast({ 
         title: "Error", 
-        description: "Gagal membuat usulan: " + error.message, 
+        description: "Gagal membuat pengajuan/usulan: " + error.message, 
         variant: "destructive" 
       });
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-6 text-white">
+      {/* Header Info */}
       <Card className="bg-slate-800/50 border-slate-700/50">
         <CardHeader>
           <CardTitle className="text-white flex items-center">
-            <Users className="w-5 h-5 mr-2" />
-            Buat Usulan Cuti - {currentUser.unitKerja}
+            {isEmployee ? <FileText className="w-5 h-5 mr-2" /> : <Users className="w-5 h-5 mr-2" />}
+            {isEmployee ? "Formulir Pengajuan Cuti Mandiri" : `Buat Usulan Cuti - ${currentUser.unitKerja}`}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="proposal-title" className="text-slate-300">Judul Usulan</Label>
-            <Input
-              id="proposal-title"
-              value={proposalTitle}
-              onChange={(e) => setProposalTitle(e.target.value)}
-              placeholder="Contoh: Usulan Cuti Bersama Hari Raya..."
-              className="bg-slate-700/50 border-slate-600/50 text-white"
-            />
-          </div>
-          <div>
-            <Label htmlFor="notes" className="text-slate-300">Catatan (Opsional)</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Catatan tambahan untuk usulan ini..."
-              className="bg-slate-700/50 border-slate-600/50 text-white"
-              rows={3}
-            />
-          </div>
+          {isEmployee ? (
+            <div className="p-4 bg-slate-700/40 rounded border border-slate-600/50">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-slate-400">Nama Pegawai:</span>
+                  <p className="font-semibold text-white">{currentLeaveItem.employee_name}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">NIP:</span>
+                  <p className="font-semibold text-white font-mono">{currentLeaveItem.employee_nip}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Unit Kerja:</span>
+                  <p className="font-semibold text-white">{currentLeaveItem.employee_department}</p>
+                </div>
+                <div>
+                  <span className="text-slate-400">Jabatan:</span>
+                  <p className="font-semibold text-white">{currentLeaveItem.employee_position || "-"}</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label htmlFor="proposal-title" className="text-slate-300">Judul Usulan</Label>
+                <Input
+                  id="proposal-title"
+                  value={proposalTitle}
+                  onChange={(e) => setProposalTitle(e.target.value)}
+                  placeholder="Contoh: Usulan Cuti Bersama Hari Raya..."
+                  className="bg-slate-700/50 border-slate-600/50 text-white"
+                />
+              </div>
+              <div>
+                <Label htmlFor="notes" className="text-slate-300">Catatan (Opsional)</Label>
+                <Textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Catatan tambahan untuk usulan ini..."
+                  className="bg-slate-700/50 border-slate-600/50 text-white"
+                  rows={2}
+                />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
-      {/* Add Employee Form */}
+      {/* Main Leave Details */}
       <Card className="bg-slate-800/50 border-slate-700/50">
         <CardHeader>
-          <CardTitle className="text-white">Tambah Pegawai ke Usulan</CardTitle>
+          <CardTitle className="text-white">Detail Pengajuan Cuti</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label className="text-slate-300">Pilih Pegawai</Label>
-              <AutocompleteInput
-                value={currentLeaveItem.employee_id}
-                onChange={handleEmployeeSelect}
-                options={employeeOptions}
-                loading={loadingEmployees}
-                placeholder="Cari pegawai..."
-                className="bg-slate-700/50 border-slate-600/50"
-              />
-            </div>
-            <div>
+            {!isEmployee && (
+              <div>
+                <Label className="text-slate-300">Pilih Pegawai</Label>
+                <AutocompleteInput
+                  value={currentLeaveItem.employee_id}
+                  onChange={handleEmployeeSelect}
+                  options={employeeOptions}
+                  loading={loadingEmployees}
+                  placeholder="Cari pegawai..."
+                  className="bg-slate-700/50 border-slate-600/50"
+                />
+              </div>
+            )}
+            <div className={isEmployee ? "col-span-2 md:col-span-1" : ""}>
               <Label className="text-slate-300">Jenis Cuti</Label>
               <AutocompleteInput
                 value={currentLeaveItem.leave_type_id}
@@ -260,6 +351,19 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
                 className="bg-slate-700/50 border-slate-600/50"
               />
             </div>
+            {isEmployee && (
+              <div>
+                <Label className="text-slate-300">Tahun Jatah Cuti</Label>
+                <select
+                  value={currentLeaveItem.leave_quota_year}
+                  onChange={(e) => setCurrentLeaveItem(prev => ({ ...prev, leave_quota_year: parseInt(e.target.value) }))}
+                  className="flex h-10 w-full rounded-md border border-slate-600/50 bg-slate-700/50 px-3 py-2 text-sm text-white focus:outline-none"
+                >
+                  <option value={currentYear}>{currentYear} (Tahun Berjalan)</option>
+                  <option value={currentYear - 1}>{currentYear - 1} (Penangguhan)</option>
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -317,11 +421,11 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
               </Popover>
             </div>
             <div>
-              <Label className="text-slate-300">Durasi</Label>
+              <Label className="text-slate-300">Durasi Terhitung</Label>
               <Input
-                value={`${currentLeaveItem.days_requested} hari`}
+                value={`${currentLeaveItem.days_requested} hari kerja`}
                 readOnly
-                className="bg-slate-600/50 border-slate-600/50 text-white"
+                className="bg-slate-600/50 border-slate-600/50 text-white font-semibold"
               />
             </div>
           </div>
@@ -332,7 +436,7 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
               <Textarea
                 value={currentLeaveItem.reason}
                 onChange={(e) => setCurrentLeaveItem(prev => ({ ...prev, reason: e.target.value }))}
-                placeholder="Alasan mengambil cuti..."
+                placeholder="Jelaskan alasan pengajuan cuti Anda..."
                 className="bg-slate-700/50 border-slate-600/50 text-white"
                 rows={2}
               />
@@ -342,25 +446,27 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
               <Textarea
                 value={currentLeaveItem.address_during_leave}
                 onChange={(e) => setCurrentLeaveItem(prev => ({ ...prev, address_during_leave: e.target.value }))}
-                placeholder="Alamat yang dapat dihubungi..."
+                placeholder="Alamat lengkap / nomor telepon yang aktif selama cuti..."
                 className="bg-slate-700/50 border-slate-600/50 text-white"
                 rows={2}
               />
             </div>
           </div>
 
-          <Button
-            onClick={addEmployeeToProposal}
-            className="w-full bg-blue-600 hover:bg-blue-700"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Tambah ke Usulan
-          </Button>
+          {!isEmployee && (
+            <Button
+              onClick={addEmployeeToProposal}
+              className="w-full bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Tambah Pegawai ke Usulan
+            </Button>
+          )}
         </CardContent>
       </Card>
 
-      {/* Selected Employees List */}
-      {selectedEmployees.length > 0 && (
+      {/* Selected Employees List (Only for Admin Batch mode) */}
+      {!isEmployee && selectedEmployees.length > 0 && (
         <Card className="bg-slate-800/50 border-slate-700/50">
           <CardHeader>
             <CardTitle className="text-white">
@@ -409,16 +515,16 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
       )}
 
       {/* Actions */}
-      <div className="flex justify-end space-x-3">
-        <Button variant="outline" onClick={onCancel}>
+      <div className="flex justify-end space-x-3 pt-4">
+        <Button variant="outline" onClick={onCancel} className="bg-slate-700 hover:bg-slate-600 border-slate-600">
           Batal
         </Button>
         <Button
           onClick={handleSubmitProposal}
-          disabled={selectedEmployees.length === 0}
+          disabled={!isEmployee && selectedEmployees.length === 0}
           className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
         >
-          Kirim Usulan ({selectedEmployees.length} pegawai)
+          {isEmployee ? "Kirim Pengajuan Cuti" : `Kirim Usulan (${selectedEmployees.length} pegawai)`}
         </Button>
       </div>
     </div>

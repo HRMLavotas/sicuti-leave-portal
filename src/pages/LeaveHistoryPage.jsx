@@ -174,16 +174,23 @@ const LeaveHistoryPage = () => {
             count: "exact",
           });
 
-        // Apply unit-based filtering for admin_unit users
+        // Apply role-based filtering
         const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja;
+        const userNip = currentUser?.nip;
 
-        if (currentUser?.role === 'admin_unit' && userUnit) {
+        // Employee role: hanya tampilkan data mereka sendiri berdasarkan NIP
+        if (currentUser?.role === 'employee' && userNip) {
+          query = query.eq("nip", userNip);
+        } else if (currentUser?.role === 'admin_unit' && userUnit) {
           if (userUnit.length > 0 && userUnit.length < 500) {
             query = query.eq("department", userUnit);
           } else {
             throw new Error("Invalid unit name in user session");
           }
         } else if (currentUser?.role === 'admin_unit') {
+          query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+        } else if (currentUser?.role === 'employee' && !userNip) {
+          // Employee tanpa NIP, tampilkan data kosong
           query = query.eq("id", "00000000-0000-0000-0000-000000000000");
         }
 
@@ -220,9 +227,13 @@ const LeaveHistoryPage = () => {
             .from("employees")
             .select("*", { count: "exact", head: true });
 
-          if (currentUser?.role === 'admin_unit' && userUnit) {
+          if (currentUser?.role === 'employee' && userNip) {
+            totalCountQuery = totalCountQuery.eq("nip", userNip);
+          } else if (currentUser?.role === 'admin_unit' && userUnit) {
             totalCountQuery = totalCountQuery.eq("department", userUnit);
           } else if (currentUser?.role === 'admin_unit') {
+            totalCountQuery = totalCountQuery.eq("id", "00000000-0000-0000-0000-000000000000");
+          } else if (currentUser?.role === 'employee' && !userNip) {
             totalCountQuery = totalCountQuery.eq("id", "00000000-0000-0000-0000-000000000000");
           }
 
@@ -835,6 +846,8 @@ const LeaveHistoryPage = () => {
     return config;
   }, [leaveTypes]);
 
+  const isEmployee = profile?.role === 'employee';
+
   return (
     <>
       <div className="space-y-6">
@@ -846,10 +859,10 @@ const LeaveHistoryPage = () => {
         >
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">
-              Riwayat & Saldo Cuti
+              {isEmployee ? 'Riwayat & Saldo Cuti Saya' : 'Riwayat & Saldo Cuti'}
             </h1>
             <p className="text-slate-300">
-              Lihat riwayat cuti dan kelola saldo cuti tahunan
+              {isEmployee ? 'Lihat riwayat dan saldo cuti Anda' : 'Lihat riwayat cuti dan kelola saldo cuti tahunan'}
             </p>
           </div>
           <div className="flex space-x-2 mt-4 sm:mt-0">
@@ -864,13 +877,15 @@ const LeaveHistoryPage = () => {
               />
               {isLoadingData ? "Memuat..." : "Refresh"}
             </Button>
-            <Button
-              onClick={handleExportDataCuti}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export Data Cuti
-            </Button>
+            {!isEmployee && (
+              <Button
+                onClick={handleExportDataCuti}
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Data Cuti
+              </Button>
+            )}
           </div>
         </motion.div>
 
@@ -938,7 +953,7 @@ const LeaveHistoryPage = () => {
                           ? selectedEmployeeLeaveData
                           : null
                       }
-                      onAddDeferredLeave={handleOpenAddDeferred}
+                      onAddDeferredLeave={!isEmployee ? handleOpenAddDeferred : undefined}
                       onViewHistory={handleViewHistory}
                     />
                   ))}

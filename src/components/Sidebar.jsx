@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { signOut, getAuthUser } from "@/lib/supabaseSSO";
+import { AuthManager } from "@/lib/auth";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 
 const menuItems = [
   { icon: Users, label: "Data Pegawai", path: "/employees" },
   { icon: Calendar, label: "Pengajuan Cuti", path: "/leave-requests" },
+  { icon: FileText, label: "Usulan Cuti", path: "/leave-proposals" },
   { icon: Layers, label: "Usulan per Unit", path: "/batch-leave-proposals" },
   { icon: History, label: "Riwayat Cuti", path: "/leave-history" },
   {
@@ -47,7 +49,12 @@ const getMenuItemsByPermissions = (permissions = [], user) => {
       return true;
     if (
       item.label === "Pengajuan Cuti" &&
-      permissions.includes("leave_requests_unit")
+      (permissions.includes("leave_requests_unit") || permissions.includes("leave_requests_self"))
+    )
+      return true;
+    if (
+      item.label === "Usulan Cuti" &&
+      (user?.role === "employee" || user?.role === "admin_unit")
     )
       return true;
     if (
@@ -57,7 +64,7 @@ const getMenuItemsByPermissions = (permissions = [], user) => {
       return true;
     if (
       item.label === "Riwayat Cuti" &&
-      permissions.includes("leave_history_unit")
+      (permissions.includes("leave_history_unit") || permissions.includes("leave_history_self"))
     )
       return true;
     if (
@@ -77,25 +84,56 @@ const getMenuItemsByPermissions = (permissions = [], user) => {
   });
 };
 
+const ROLE_LABELS = {
+  master_admin: "Master Admin",
+  admin_unit: "Admin Unit",
+  employee: "Pegawai",
+};
+
 const Sidebar = ({ isOpen, setIsOpen, isMobile }) => {
   const location = useLocation();
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const loadUser = async () => {
-      const authUser = await getAuthUser();
-      if (authUser) {
+    const loadUser = () => {
+      // Gunakan AuthManager untuk mendapatkan data user lengkap (role, permissions, nip)
+      const sessionUser = AuthManager.getUserSession();
+      if (sessionUser) {
         setUser({
-          name: authUser.email?.split('@')[0] || 'User',
-          role: 'user',
-          permissions: ['all'],
+          name: sessionUser.name || sessionUser.username || sessionUser.email?.split('@')[0] || 'User',
+          role: sessionUser.role || 'employee',
+          permissions: sessionUser.permissions || [],
+          nip: sessionUser.nip || null,
         });
+      } else {
+        // Fallback: coba dari Supabase auth
+        const loadFromAuth = async () => {
+          const authUser = await getAuthUser();
+          if (authUser) {
+            setUser({
+              name: authUser.email?.split('@')[0] || 'User',
+              role: 'user',
+              permissions: ['all'],
+            });
+          }
+        };
+        loadFromAuth();
       }
     };
     loadUser();
+
+    // Listen for storage changes (when user logs in/out in another tab)
+    const handleStorageChange = (e) => {
+      if (e.key === "user_data" || e.key === "auth_token") {
+        loadUser();
+      }
+    };
+    window.addEventListener("storage", handleStorageChange);
+    return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
   const handleLogout = async () => {
+    AuthManager.clearSession();
     await signOut();
   };
 
@@ -259,11 +297,11 @@ const Sidebar = ({ isOpen, setIsOpen, isMobile }) => {
                   {user?.name || "-"}
                 </p>
                 <p className="text-slate-400 text-xs mb-2">
-                  {user?.role
+                  {ROLE_LABELS[user?.role] || (user?.role
                     ? user.role
                       .replace("_", " ")
                       .replace(/\b\w/g, (c) => c.toUpperCase())
-                    : "-"}
+                    : "-")}
                 </p>
                 <div className="mb-2">
                   <PwaInstallPrompt />

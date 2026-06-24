@@ -80,14 +80,37 @@ const LeaveRequests = () => {
       console.log("🔍 DEBUG LeaveRequests - User session:", {
         role: currentUser?.role,
         unit_kerja: currentUser?.unit_kerja,
-        unitKerja: currentUser?.unitKerja
+        unitKerja: currentUser?.unitKerja,
+        nip: currentUser?.nip
       });
 
       // Fix: Use unit_kerja instead of unitKerja
       const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja;
       let employeeIdsFilter = null;
 
-      if (currentUser && currentUser.role === 'admin_unit' && userUnit) {
+      // Employee role: hanya bisa melihat data cuti mereka sendiri berdasarkan NIP
+      if (currentUser && currentUser.role === 'employee' && currentUser.nip) {
+        console.log("🔍 DEBUG LeaveRequests - Employee filtering by NIP:", currentUser.nip);
+
+        const { data: selfEmployee, error: selfError } = await supabase
+          .from("employees")
+          .select("id")
+          .eq("nip", currentUser.nip)
+          .maybeSingle();
+
+        if (selfError) {
+          console.error("Error fetching employee by NIP:", selfError);
+        }
+
+        if (selfEmployee) {
+          employeeIdsFilter = [selfEmployee.id];
+          countQuery = countQuery.eq("employee_id", selfEmployee.id);
+        } else {
+          // NIP tidak ditemukan di data pegawai, tampilkan data kosong
+          countQuery = countQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000");
+          employeeIdsFilter = [];
+        }
+      } else if (currentUser && currentUser.role === 'admin_unit' && userUnit) {
         console.log("🔍 DEBUG LeaveRequests - Getting employees from unit:", userUnit);
 
         // First get employee IDs from the user's unit
@@ -152,14 +175,23 @@ const LeaveRequests = () => {
         )
         .order("submitted_date", { ascending: false });
 
-      // Apply unit-based filtering for admin_unit users to data query
-      if (currentUser && currentUser.role === 'admin_unit' && employeeIdsFilter) {
-        console.log("🔍 DEBUG LeaveRequests - Applying employee IDs filter to data query:", employeeIdsFilter.length);
-        if (employeeIdsFilter.length > 0) {
-          dataQuery = dataQuery.in("employee_id", employeeIdsFilter);
-        } else {
-          // No employees in this unit, return empty result
-          dataQuery = dataQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000"); // Non-existent ID
+      // Apply role-based filtering to data query (employee or admin_unit)
+      if (currentUser && employeeIdsFilter) {
+        if (currentUser.role === 'employee') {
+          // Employee: filter to only their own data
+          if (employeeIdsFilter.length > 0) {
+            dataQuery = dataQuery.eq("employee_id", employeeIdsFilter[0]);
+          } else {
+            dataQuery = dataQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000");
+          }
+        } else if (currentUser.role === 'admin_unit') {
+          console.log("🔍 DEBUG LeaveRequests - Applying employee IDs filter to data query:", employeeIdsFilter.length);
+          if (employeeIdsFilter.length > 0) {
+            dataQuery = dataQuery.in("employee_id", employeeIdsFilter);
+          } else {
+            // No employees in this unit, return empty result
+            dataQuery = dataQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000"); // Non-existent ID
+          }
         }
       }
 
@@ -381,6 +413,10 @@ const LeaveRequests = () => {
     }
   };
 
+  // Check if current user is employee
+  const currentUser = AuthManager.getUserSession();
+  const isEmployee = currentUser?.role === 'employee';
+
   const leaveTypeOptions = [
     { value: "", label: "Semua Jenis Cuti" },
     ...leaveTypes.map((lt) => ({ value: lt.id, label: lt.name })),
@@ -396,10 +432,10 @@ const LeaveRequests = () => {
       >
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">
-            Data Cuti Pegawai
+            {isEmployee ? 'Data Cuti Saya' : 'Data Cuti Pegawai'}
           </h1>
           <p className="text-slate-300">
-            Kelola data cuti pegawai yang telah diinput
+            {isEmployee ? 'Lihat data pengajuan cuti Anda' : 'Kelola data cuti pegawai yang telah diinput'}
           </p>
         </div>
         <div className="flex space-x-2 mt-4 sm:mt-0">
@@ -414,45 +450,47 @@ const LeaveRequests = () => {
             />
             {isLoading ? "Memuat..." : "Refresh"}
           </Button>
-          <Dialog
-            open={isFormOpen}
-            onOpenChange={(open) => {
-              setIsFormOpen(open);
-              if (!open) setEditingRequest(null);
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button
-                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                onClick={() => setEditingRequest(null)}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Input Data Cuti
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingRequest ? "Edit Data Cuti" : "Form Input Data Cuti"}
-                </DialogTitle>
-                <DialogDescription>
-                  {editingRequest
-                    ? "Ubah detail data cuti di bawah ini."
-                    : "Isi detail data cuti di bawah ini."}
-                </DialogDescription>
-              </DialogHeader>
-              <LeaveRequestForm
-                employees={employees}
-                leaveTypes={leaveTypes}
-                onSubmitSuccess={onFormSubmitSuccess}
-                onCancel={() => {
-                  setIsFormOpen(false);
-                  setEditingRequest(null);
-                }}
-                initialData={editingRequest}
-              />
-            </DialogContent>
-          </Dialog>
+          {!isEmployee && (
+            <Dialog
+              open={isFormOpen}
+              onOpenChange={(open) => {
+                setIsFormOpen(open);
+                if (!open) setEditingRequest(null);
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button
+                  className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                  onClick={() => setEditingRequest(null)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Input Data Cuti
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingRequest ? "Edit Data Cuti" : "Form Input Data Cuti"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {editingRequest
+                      ? "Ubah detail data cuti di bawah ini."
+                      : "Isi detail data cuti di bawah ini."}
+                  </DialogDescription>
+                </DialogHeader>
+                <LeaveRequestForm
+                  employees={employees}
+                  leaveTypes={leaveTypes}
+                  onSubmitSuccess={onFormSubmitSuccess}
+                  onCancel={() => {
+                    setIsFormOpen(false);
+                    setEditingRequest(null);
+                  }}
+                  initialData={editingRequest}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </motion.div>
 
@@ -607,8 +645,8 @@ const LeaveRequests = () => {
                     key={request.id}
                     request={request}
                     index={index}
-                    onEdit={handleEditRequest}
-                    onDelete={handleDeleteRequest}
+                    onEdit={!isEmployee ? handleEditRequest : undefined}
+                    onDelete={!isEmployee ? handleDeleteRequest : undefined}
                   />
                 ))}
 
