@@ -79,25 +79,10 @@ export const supabaseSimpelAdmin = createClient(
  * Setelah login, SIMPEL akan kirim token ke /auth/callback SiCuti
  */
 export const redirectToSimpelLogin = () => {
-  const simpelAppUrl = import.meta.env.VITE_SIMPEL_APP_URL;
-  
-  // Validasi: VITE_SIMPEL_APP_URL wajib ada
-  if (!simpelAppUrl) {
-    console.error("[SSO] VITE_SIMPEL_APP_URL tidak dikonfigurasi!");
-    console.error("[SSO] Environment variables yang tersedia:", {
-      VITE_SIMPEL_URL: import.meta.env.VITE_SIMPEL_URL ? "✓ Ada" : "✗ Tidak ada",
-      VITE_SIMPEL_ANON_KEY: import.meta.env.VITE_SIMPEL_ANON_KEY ? "✓ Ada" : "✗ Tidak ada",
-      VITE_SIMPEL_APP_URL: import.meta.env.VITE_SIMPEL_APP_URL ? "✓ Ada" : "✗ Tidak ada",
-      VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL ? "✓ Ada" : "✗ Tidak ada",
-    });
-    
-    alert(
-      "Konfigurasi SSO belum lengkap.\n\n" +
-      "VITE_SIMPEL_APP_URL tidak ditemukan.\n" +
-      "Silakan hubungi administrator untuk mengonfigurasi environment variables."
-    );
-    return;
-  }
+  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  const simpelAppUrl = isLocal 
+    ? (import.meta.env.VITE_SIMPEL_APP_URL || "http://localhost:8080")
+    : "https://sipandai.site";
   
   const sicutiCallbackUrl = `${window.location.origin}/auth/callback`;
   const redirectUrl = `${simpelAppUrl}/auth?redirect=${encodeURIComponent(sicutiCallbackUrl)}`;
