@@ -11,3 +11,4 @@ build
 **/tempobook/**
 scripts/
 scratch/
+.vercel
