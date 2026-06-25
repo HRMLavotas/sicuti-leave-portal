@@ -40,6 +40,10 @@ import { id } from "date-fns/locale";
 import { useDepartments } from "@/hooks/useDepartments";
 import { useLeaveTypes } from "@/hooks/useLeaveTypes";
 import { AuthManager } from "@/lib/auth";
+import {
+  getScopedSicutiEmployeeIds,
+  applySicutiEmployeeIdFilter,
+} from "@/utils/employeeScope";
 
 const LeaveRequests = () => {
   const { toast } = useToast();
@@ -75,45 +79,9 @@ const LeaveRequests = () => {
         .from("leave_requests")
         .select("*", { count: "exact", head: true });
 
-      // Filter berdasarkan role — query SIMPEL bukan tabel lokal
       const currentUser = AuthManager.getUserSession();
-      const userUnit = currentUser?.department;
-      let employeeIdsFilter = null;
-      const NO_ID = '00000000-0000-0000-0000-000000000000';
-
-      // Employee: cari di SIMPEL by NIP atau user ID
-      if (currentUser && currentUser.role === 'employee') {
-        let simpelEmployee = null;
-        if (currentUser.nip) {
-          const { data: d1 } = await supabaseSimpelAdmin
-            .from('employees').select('id').eq('nip', currentUser.nip).maybeSingle();
-          simpelEmployee = d1;
-        }
-        if (!simpelEmployee && currentUser.id) {
-          const { data: d2 } = await supabaseSimpelAdmin
-            .from('employees').select('id').eq('id', currentUser.id).maybeSingle();
-          simpelEmployee = d2;
-        }
-        if (simpelEmployee) {
-          employeeIdsFilter = [simpelEmployee.id];
-          countQuery = countQuery.eq('employee_id', simpelEmployee.id);
-        } else {
-          countQuery = countQuery.eq('employee_id', NO_ID);
-          employeeIdsFilter = [];
-        }
-      } else if (currentUser && currentUser.role === 'admin_unit' && userUnit) {
-        // admin_unit: ambil semua ID pegawai dari unitnya di SIMPEL
-        const { data: unitEmps, error: empErr } = await supabaseSimpelAdmin
-          .from('employees').select('id').eq('department', userUnit);
-        if (!empErr) {
-          employeeIdsFilter = (unitEmps || []).map(e => e.id);
-          if (employeeIdsFilter.length > 0) {
-            countQuery = countQuery.in('employee_id', employeeIdsFilter);
-          } else {
-            countQuery = countQuery.eq('employee_id', NO_ID);
-          }
-        }
-      }
+      const scopedEmployeeIds = await getScopedSicutiEmployeeIds(currentUser);
+      countQuery = applySicutiEmployeeIdFilter(countQuery, scopedEmployeeIds);
 
       // Apply filters to the count query
       // Note: For search across joined tables, we'll fetch all data and filter client-side
@@ -156,27 +124,9 @@ const LeaveRequests = () => {
         )
         .order("submitted_date", { ascending: false });
 
-      // Apply role-based filtering to data query (employee or admin_unit)
-      if (currentUser && employeeIdsFilter) {
-        if (currentUser.role === 'employee') {
-          // Employee: filter to only their own data
-          if (employeeIdsFilter.length > 0) {
-            dataQuery = dataQuery.eq("employee_id", employeeIdsFilter[0]);
-          } else {
-            dataQuery = dataQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000");
-          }
-        } else if (currentUser.role === 'admin_unit') {
-          console.log("ðŸ” DEBUG LeaveRequests - Applying employee IDs filter to data query:", employeeIdsFilter.length);
-          if (employeeIdsFilter.length > 0) {
-            dataQuery = dataQuery.in("employee_id", employeeIdsFilter);
-          } else {
-            // No employees in this unit, return empty result
-            dataQuery = dataQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000"); // Non-existent ID
-          }
-        }
-      }
+      dataQuery = applySicutiEmployeeIdFilter(dataQuery, scopedEmployeeIds);
 
-      // Only apply pagination if not searching (for search, we need all data to filter client-side)
+      // Only apply pagination if not searching
       if (!debouncedSearchTerm) {
         dataQuery = dataQuery.range(
           (currentPage - 1) * itemsPerPage,

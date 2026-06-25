@@ -28,6 +28,7 @@ const EmployeeLeaveHistoryModal = ({
   employee,
   year,
   onDataChange,
+  readOnly = false,
 }) => {
   const { toast } = useToast();
   const [history, setHistory] = useState([]);
@@ -234,22 +235,26 @@ const EmployeeLeaveHistoryModal = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-slate-400 hover:text-yellow-400"
-                          onClick={() => handleAction("Edit", record.id)}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="text-slate-400 hover:text-red-400"
-                          onClick={() => handleDelete(record.id)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        {!readOnly && (
+                          <>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-slate-400 hover:text-yellow-400"
+                              onClick={() => handleAction("Edit", record.id)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-slate-400 hover:text-red-400"
+                              onClick={() => handleDelete(record.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </motion.div>

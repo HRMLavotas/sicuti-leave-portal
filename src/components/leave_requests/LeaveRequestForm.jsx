@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
 import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
+import { applyEmployeeScopeFilter, assertCanAccessEmployeeById } from "@/utils/employeeScope";
 import { Loader2, Search, X, Plus } from "lucide-react";
 import {
   countWorkingDays,
@@ -124,10 +125,7 @@ const LeaveRequestForm = ({
           .or(`name.ilike.%${safeQuery}%,nip.ilike.%${safeQuery}%`)
           .limit(10);
 
-        // admin_unit hanya bisa mencari pegawai di unitnya sendiri
-        if (currentUser?.role === "admin_unit" && currentUser?.department) {
-          dbQuery = dbQuery.eq("department", currentUser.department);
-        }
+        dbQuery = applyEmployeeScopeFilter(dbQuery, currentUser);
 
         const { data, error } = await dbQuery;
         if (error) throw error;
@@ -667,6 +665,9 @@ const LeaveRequestForm = ({
     });
 
     try {
+      const currentUser = AuthManager.getUserSession();
+      await assertCanAccessEmployeeById(currentUser, formData.employee_id);
+
       let error;
       if (initialData?.id) {
         // EDIT MODE: Update existing request and adjust balance
@@ -1411,11 +1412,8 @@ const LeaveRequestForm = ({
                               .select("id, nip, name, department, position_name, rank_group")
                               .or(`name.ilike.%${val}%,nip.ilike.%${val}%`)
                               .limit(5);
-                            
-                            // admin_unit hanya bisa mencari pegawai di unitnya sendiri
-                            if (currentUser?.role === "admin_unit" && currentUser?.department) {
-                              query = query.eq("department", currentUser.department);
-                            }
+
+                            query = applyEmployeeScopeFilter(query, currentUser);
 
                             query.then(({ data }) => {
                               setSignerSearchResults(data || []);

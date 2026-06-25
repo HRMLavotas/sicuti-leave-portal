@@ -15,6 +15,9 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { useDepartments } from "@/hooks/useDepartments";
 import { Label } from '@/components/ui/label';
+import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
+import { AuthManager } from "@/lib/auth";
+import { applyEmployeeScopeFilter } from "@/utils/employeeScope";
 
 // Stat card component with loading state
 const StatCard = ({
@@ -95,8 +98,11 @@ const Dashboard = () => {
     try {
       console.log("Fetching stats for department:", selectedUnit);
 
-      // Build base employee query
+      const currentUser = AuthManager.getUserSession();
+
+      // Build base employee query — scoped by role
       let employeeQuery = supabaseSimpelAdmin.from("employees").select("*");
+      employeeQuery = applyEmployeeScopeFilter(employeeQuery, currentUser);
 
       // Apply department filter if selected
       if (selectedUnit && selectedUnit.trim() !== "") {

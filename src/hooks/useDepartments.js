@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
+import { applyEmployeeScopeFilter } from "@/utils/employeeScope";
 
 /**
  * Hook untuk mengambil daftar unit kerja (department) dari SIMPEL.
@@ -24,10 +25,7 @@ export const useDepartments = () => {
           .select("department")
           .not("department", "is", null);
 
-        // admin_unit hanya lihat unitnya sendiri
-        if (currentUser?.role === "admin_unit" && currentUser?.department) {
-          query = query.eq("department", currentUser.department);
-        }
+        query = applyEmployeeScopeFilter(query, currentUser);
 
         const { data, error: qErr } = await query;
         if (qErr) throw qErr;

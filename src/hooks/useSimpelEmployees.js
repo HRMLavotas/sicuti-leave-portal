@@ -2,6 +2,7 @@
 import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { useToast } from "@/components/ui/use-toast";
 import { AuthManager } from "@/lib/auth";
+import { applyEmployeeScopeFilter } from "@/utils/employeeScope";
 
 const EMPLOYEES_PER_PAGE = 50;
 
@@ -34,11 +35,7 @@ export const useSimpelEmployeeData = (
   const fetchDropdownOptions = useCallback(async () => {
     try {
       let query = supabaseSimpelAdmin.from("employees").select("department, position_type, asn_status, rank_group");
-
-      // Filter by unit untuk admin_unit
-      if (currentUser?.role === "admin_unit" && currentUser?.department) {
-        query = query.eq("department", currentUser.department);
-      }
+      query = applyEmployeeScopeFilter(query, currentUser);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -62,10 +59,7 @@ export const useSimpelEmployeeData = (
         .from("employees")
         .select("id, nip, name, department, position_name, position_type, asn_status, rank_group, join_date", { count: "exact" });
 
-      // Filter unit untuk admin_unit
-      if (currentUser?.role === "admin_unit" && currentUser?.department) {
-        query = query.eq("department", currentUser.department);
-      }
+      query = applyEmployeeScopeFilter(query, currentUser);
 
       // Search
       if (searchTerm?.trim()) {
@@ -109,9 +103,7 @@ export const useSimpelEmployeeData = (
         .from("employees")
         .select("id", { count: "exact", head: true });
 
-      if (currentUser?.role === "admin_unit" && currentUser?.department) {
-        query = query.eq("department", currentUser.department);
-      }
+      query = applyEmployeeScopeFilter(query, currentUser);
 
       const { count } = await query;
       setOverallTotalCount(count || 0);
@@ -148,11 +140,14 @@ export const useSimpelEmployeeData = (
  * Dipakai oleh LeaveRequests, dll yang perlu cari pegawai by NIP
  */
 export const getSimpelEmployeeByNip = async (nip) => {
-  const { data, error } = await supabaseSimpelAdmin
+  const user = AuthManager.getUserSession();
+  let query = supabaseSimpelAdmin
     .from("employees")
     .select("id, nip, name, department, position_name, rank_group, asn_status")
-    .eq("nip", nip)
-    .maybeSingle();
+    .eq("nip", nip);
+
+  query = applyEmployeeScopeFilter(query, user);
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw error;
   return data;
@@ -162,11 +157,14 @@ export const getSimpelEmployeeByNip = async (nip) => {
  * Ambil employee dari SIMPEL by ID (UUID SIMPEL)
  */
 export const getSimpelEmployeeById = async (id) => {
-  const { data, error } = await supabaseSimpelAdmin
+  const user = AuthManager.getUserSession();
+  let query = supabaseSimpelAdmin
     .from("employees")
     .select("id, nip, name, department, position_name, rank_group, asn_status")
-    .eq("id", id)
-    .maybeSingle();
+    .eq("id", id);
+
+  query = applyEmployeeScopeFilter(query, user);
+  const { data, error } = await query.maybeSingle();
 
   if (error) throw error;
   return data;
@@ -177,10 +175,13 @@ export const getSimpelEmployeeById = async (id) => {
  * Bisa difilter by department
  */
 export const getSimpelEmployees = async (department = null) => {
+  const user = AuthManager.getUserSession();
   let query = supabaseSimpelAdmin
     .from("employees")
     .select("id, nip, name, department, position_name, rank_group")
     .order("name");
+
+  query = applyEmployeeScopeFilter(query, user);
 
   if (department) {
     query = query.eq("department", department);

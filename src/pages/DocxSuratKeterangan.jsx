@@ -46,6 +46,10 @@ import {
   fetchNationalHolidaysFromDB,
 } from "@/utils/workingDays";
 import { AuthManager } from "@/lib/auth";
+import {
+  getScopedSicutiEmployeeIds,
+  applySicutiEmployeeIdFilter,
+} from "@/utils/employeeScope";
 
 // Dummy data for employees - in a real app, this would come from an API
 const dummyEmployees = [
@@ -247,8 +251,10 @@ function DocxSuratKeterangan() {
       try {
         setIsLoadingLeaveRequests(true);
 
-        // Fetch leave requests with employee and leave type data
-        const { data, error } = await supabase
+        const currentUser = AuthManager.getUserSession();
+        const scopedEmployeeIds = await getScopedSicutiEmployeeIds(currentUser);
+
+        let query = supabase
           .from("leave_requests")
           .select(
             `
@@ -267,6 +273,10 @@ function DocxSuratKeterangan() {
           `,
           )
           .order("created_at", { ascending: false });
+
+        query = applySicutiEmployeeIdFilter(query, scopedEmployeeIds);
+
+        const { data, error } = await query;
 
         if (error) throw error;
 

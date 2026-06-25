@@ -33,6 +33,12 @@ import {
   resolveSicutiEmployeeIds,
   attachSicutiEmployeeIds,
 } from "@/utils/sicutiEmployeeResolver";
+import {
+  applyEmployeeScopeFilter,
+  getScopedSicutiEmployeeIds,
+  applySicutiEmployeeIdFilter,
+  isLeaveDataReadOnly,
+} from "@/utils/employeeScope";
 
 const STATIC_LEAVE_TYPES_CONFIG = {
   "Cuti Tahunan": {
@@ -172,32 +178,14 @@ const LeaveHistoryPage = () => {
       try {
         const currentUser = profile;
 
-        // Build the base query for employees — query SIMPEL bukan tabel lokal
+        // Build the base query for employees — query SIMPEL, scoped by role
         let query = supabaseSimpelAdmin
           .from("employees")
           .select("id, name, nip, department, position_name, rank_group", {
             count: "exact",
           });
 
-        // Apply role-based filtering
-        const userUnit = currentUser?.department;
-        const userNip = currentUser?.nip;
-
-        // Employee role: hanya tampilkan data mereka sendiri berdasarkan NIP
-        if (currentUser?.role === 'employee' && userNip) {
-          query = query.eq("nip", userNip);
-        } else if (currentUser?.role === 'admin_unit' && userUnit) {
-          if (userUnit.length > 0 && userUnit.length < 500) {
-            query = query.eq("department", userUnit);
-          } else {
-            throw new Error("Invalid unit name in user session");
-          }
-        } else if (currentUser?.role === 'admin_unit') {
-          query = query.eq("id", "00000000-0000-0000-0000-000000000000");
-        } else if (currentUser?.role === 'employee' && !userNip) {
-          // Employee tanpa NIP, tampilkan data kosong
-          query = query.eq("id", "00000000-0000-0000-0000-000000000000");
-        }
+        query = applyEmployeeScopeFilter(query, currentUser);
 
         // Add search filter if search term exists
         if (debouncedSearchTerm) {
@@ -232,15 +220,7 @@ const LeaveHistoryPage = () => {
             .from("employees")
             .select("*", { count: "exact", head: true });
 
-          if (currentUser?.role === 'employee' && userNip) {
-            totalCountQuery = totalCountQuery.eq("nip", userNip);
-          } else if (currentUser?.role === 'admin_unit' && userUnit) {
-            totalCountQuery = totalCountQuery.eq("department", userUnit);
-          } else if (currentUser?.role === 'admin_unit') {
-            totalCountQuery = totalCountQuery.eq("id", "00000000-0000-0000-0000-000000000000");
-          } else if (currentUser?.role === 'employee' && !userNip) {
-            totalCountQuery = totalCountQuery.eq("id", "00000000-0000-0000-0000-000000000000");
-          }
+          totalCountQuery = applyEmployeeScopeFilter(totalCountQuery, currentUser);
 
           const { count: totalCount, error: countError } = await totalCountQuery;
           if (!countError) {
@@ -651,8 +631,10 @@ const LeaveHistoryPage = () => {
         description: "Sedang mempersiapkan data untuk export...",
       });
 
-      // Fetch leave requests data
-      const { data: leaveRequests, error: leaveRequestsError } = await supabase
+      const currentUser = profile;
+      const scopedEmployeeIds = await getScopedSicutiEmployeeIds(currentUser);
+
+      let leaveRequestsQuery = supabase
         .from("leave_requests")
         .select(
           `
@@ -663,10 +645,13 @@ const LeaveHistoryPage = () => {
         )
         .order("created_at", { ascending: false });
 
+      leaveRequestsQuery = applySicutiEmployeeIdFilter(leaveRequestsQuery, scopedEmployeeIds);
+
+      const { data: leaveRequests, error: leaveRequestsError } = await leaveRequestsQuery;
+
       if (leaveRequestsError) throw leaveRequestsError;
 
-      // Fetch deferrals data
-      const { data: deferrals, error: deferralsError } = await supabase
+      let deferralsQuery = supabase
         .from("leave_deferrals")
         .select(
           `
@@ -675,6 +660,10 @@ const LeaveHistoryPage = () => {
         `,
         )
         .order("created_at", { ascending: false });
+
+      deferralsQuery = applySicutiEmployeeIdFilter(deferralsQuery, scopedEmployeeIds);
+
+      const { data: deferrals, error: deferralsError } = await deferralsQuery;
 
       if (deferralsError) throw deferralsError;
 
@@ -863,6 +852,7 @@ const LeaveHistoryPage = () => {
   }, [leaveTypes]);
 
   const isEmployee = profile?.role === 'employee';
+  const isReadOnly = isLeaveDataReadOnly(profile?.role);
 
   return (
     <>
@@ -969,7 +959,7 @@ const LeaveHistoryPage = () => {
                           ? selectedEmployeeLeaveData
                           : null
                       }
-                      onAddDeferredLeave={!isEmployee ? handleOpenAddDeferred : undefined}
+                      onAddDeferredLeave={!isEmployee && !isReadOnly ? handleOpenAddDeferred : undefined}
                       onViewHistory={handleViewHistory}
                     />
                   ))}
@@ -1003,6 +993,7 @@ const LeaveHistoryPage = () => {
         employee={selectedEmployee}
         year={parseInt(selectedYear)}
         onDataChange={handleDataChange}
+        readOnly={isReadOnly}
       />
     </>
   );
