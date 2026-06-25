@@ -182,7 +182,7 @@ function DocxSuratKeterangan() {
           query = query.eq("template_scope", "global");
         } else if (currentUser.role === "admin_unit") {
           // Admin unit sees only their own unit's templates
-          const userUnit = currentUser.unit_kerja || currentUser.unitKerja;
+          const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
           if (!userUnit) {
             throw new Error("Admin unit user must have a unit assigned");
           }

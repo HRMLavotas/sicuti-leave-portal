@@ -175,7 +175,7 @@ const LeaveHistoryPage = () => {
           });
 
         // Apply role-based filtering
-        const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja;
+        const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja || currentUser?.department;
         const userNip = currentUser?.nip;
 
         // Employee role: hanya tampilkan data mereka sendiri berdasarkan NIP

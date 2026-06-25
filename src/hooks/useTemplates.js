@@ -36,7 +36,7 @@ async function fetchTemplatesFromSupabase() {
   if (currentUser.role === "admin_pusat") {
     query = query.eq("template_scope", "global");
   } else if (currentUser.role === "admin_unit") {
-    const userUnit = currentUser.unit_kerja || currentUser.unitKerja;
+    const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
     if (!userUnit) throw new Error("Admin unit must have a unit assigned");
     query = query.eq("template_scope", "unit").eq("unit_scope", userUnit);
   } else {

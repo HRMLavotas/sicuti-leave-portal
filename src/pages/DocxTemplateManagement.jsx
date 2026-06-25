@@ -262,7 +262,7 @@ const DocxTemplateManagement = () => {
 
     if (currentUser.role === "admin_unit") {
       templateScope = "unit";
-      unitScope = currentUser.unit_kerja || currentUser.unitKerja;
+      unitScope = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
 
       if (!unitScope) {
         toast({
@@ -343,7 +343,7 @@ const DocxTemplateManagement = () => {
       const templateToDelete = templates.find(t => t.id === templateId);
       if (templateToDelete) {
         if (currentUser.role === "admin_unit") {
-          const userUnit = currentUser.unit_kerja || currentUser.unitKerja;
+          const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
           if (templateToDelete.template_scope !== "unit" || templateToDelete.unit_scope !== userUnit) {
             throw new Error("Anda hanya dapat menghapus template milik unit Anda sendiri");
           }

@@ -104,7 +104,7 @@ const TemplateManagement = () => {
           query = query.eq("template_scope", "global");
         } else if (currentUser.role === "admin_unit") {
           // Admin unit sees only their own unit's templates
-          const userUnit = currentUser.unit_kerja || currentUser.unitKerja;
+          const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
           if (!userUnit) {
             throw new Error("Admin unit user must have a unit assigned");
           }
@@ -273,7 +273,7 @@ const TemplateManagement = () => {
 
       if (currentUser.role === "admin_unit") {
         templateScope = "unit";
-        unitScope = currentUser.unit_kerja || currentUser.unitKerja;
+        unitScope = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
         
         if (!unitScope) {
           throw new Error("Admin unit user must have a unit assigned");
@@ -393,7 +393,7 @@ const TemplateManagement = () => {
       // Check permissions
       if (currentUser.role === "admin_unit") {
         // Admin unit can only delete their own unit's templates
-        const userUnit = currentUser.unit_kerja || currentUser.unitKerja;
+        const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
         if (templateToDelete.template_scope !== "unit" || templateToDelete.unit_scope !== userUnit) {
           throw new Error("You can only delete templates from your own unit");
         }

@@ -86,7 +86,7 @@ const LeaveRequests = () => {
       });
 
       // Fix: Use unit_kerja instead of unitKerja
-      const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja;
+      const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja || currentUser?.department;
       let employeeIdsFilter = null;
 
       // Employee role: hanya bisa melihat data cuti mereka sendiri berdasarkan NIP
