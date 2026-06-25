@@ -286,7 +286,7 @@ export const useLeaveProposals = () => {
       if (itemsUpdateErr) throw itemsUpdateErr;
 
       toast({
-        title: "Success",
+        title: "Berhasil",
         description: "Pengajuan cuti pegawai berhasil ditolak",
       });
 
@@ -296,6 +296,45 @@ export const useLeaveProposals = () => {
       toast({
         title: "Error",
         description: "Gagal menolak pengajuan: " + err.message,
+        variant: "destructive",
+      });
+      throw err;
+    }
+  }, [toast, fetchProposals]);
+
+  /**
+   * Admin unit meneruskan pengajuan pegawai ke Admin Pusat.
+   * Status berubah menjadi 'forwarded' sehingga Admin Pusat dapat melihat dan memprosesnya.
+   */
+  const forwardToAdminPusat = useCallback(async (proposalId, forwardNote = "") => {
+    try {
+      const currentUser = AuthManager.getUserSession();
+      if (!currentUser) throw new Error("User not authenticated");
+      if (currentUser.role !== 'admin_unit') throw new Error("Only admin unit can forward proposals");
+
+      const { error } = await supabase
+        .from("leave_proposals")
+        .update({
+          status: 'forwarded',
+          notes: forwardNote || undefined,
+          forwarded_by: currentUser.id,
+          forwarded_date: new Date().toISOString(),
+        })
+        .eq("id", proposalId);
+
+      if (error) throw error;
+
+      toast({
+        title: "Berhasil Diteruskan",
+        description: "Pengajuan cuti diteruskan ke Admin Pusat untuk diproses lebih lanjut.",
+      });
+
+      await fetchProposals();
+    } catch (err) {
+      console.error("Error forwarding proposal:", err);
+      toast({
+        title: "Error",
+        description: "Gagal meneruskan pengajuan: " + err.message,
         variant: "destructive",
       });
       throw err;
@@ -315,6 +354,7 @@ export const useLeaveProposals = () => {
     updateProposalStatus,
     approveEmployeeProposal,
     rejectEmployeeProposal,
+    forwardToAdminPusat,
   };
 };
 

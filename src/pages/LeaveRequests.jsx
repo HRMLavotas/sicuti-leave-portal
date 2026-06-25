@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { getSimpelEmployees } from "@/hooks/useSimpelEmployees";
 import LeaveRequestForm from "@/components/leave_requests/LeaveRequestForm";
 import LeaveRequestCard from "@/components/leave_requests/LeaveRequestCard";
@@ -74,63 +75,42 @@ const LeaveRequests = () => {
         .from("leave_requests")
         .select("*", { count: "exact", head: true });
 
-      // Apply unit-based filtering for admin_unit users
+      // Filter berdasarkan role — query SIMPEL bukan tabel lokal
       const currentUser = AuthManager.getUserSession();
-
-      // DEBUG: Log user session for leave requests
-      console.log("ðŸ” DEBUG LeaveRequests - User session:", {
-        role: currentUser?.role,
-        department: currentUser?.department,
-
-        nip: currentUser?.nip
-      });
-
-      // Fix: Use department field from user session
       const userUnit = currentUser?.department;
       let employeeIdsFilter = null;
+      const NO_ID = '00000000-0000-0000-0000-000000000000';
 
-      // Employee role: hanya bisa melihat data cuti mereka sendiri berdasarkan NIP
-      if (currentUser && currentUser.role === 'employee' && currentUser.nip) {
-        console.log("ðŸ” DEBUG LeaveRequests - Employee filtering by NIP:", currentUser.nip);
-
-        const { data: selfEmployee, error: selfError } = await supabase
-          .from("employees")
-          .select("id")
-          .eq("nip", currentUser.nip)
-          .maybeSingle();
-
-        if (selfError) {
-          console.error("Error fetching employee by NIP:", selfError);
+      // Employee: cari di SIMPEL by NIP atau user ID
+      if (currentUser && currentUser.role === 'employee') {
+        let simpelEmployee = null;
+        if (currentUser.nip) {
+          const { data: d1 } = await supabaseSimpelAdmin
+            .from('employees').select('id').eq('nip', currentUser.nip).maybeSingle();
+          simpelEmployee = d1;
         }
-
-        if (selfEmployee) {
-          employeeIdsFilter = [selfEmployee.id];
-          countQuery = countQuery.eq("employee_id", selfEmployee.id);
+        if (!simpelEmployee && currentUser.id) {
+          const { data: d2 } = await supabaseSimpelAdmin
+            .from('employees').select('id').eq('id', currentUser.id).maybeSingle();
+          simpelEmployee = d2;
+        }
+        if (simpelEmployee) {
+          employeeIdsFilter = [simpelEmployee.id];
+          countQuery = countQuery.eq('employee_id', simpelEmployee.id);
         } else {
-          // NIP tidak ditemukan di data pegawai, tampilkan data kosong
-          countQuery = countQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000");
+          countQuery = countQuery.eq('employee_id', NO_ID);
           employeeIdsFilter = [];
         }
       } else if (currentUser && currentUser.role === 'admin_unit' && userUnit) {
-        console.log("ðŸ” DEBUG LeaveRequests - Getting employees from unit:", userUnit);
-
-        // First get employee IDs from the user's unit
-        const { data: unitEmployees, error: empError } = await supabase
-          .from("employees")
-          .select("id")
-          .eq("department", userUnit);
-
-        if (empError) {
-          console.error("Error fetching unit employees:", empError);
-        } else {
-          employeeIdsFilter = unitEmployees.map(emp => emp.id);
-          console.log("ðŸ” DEBUG LeaveRequests - Employee IDs in unit:", employeeIdsFilter.length);
-
+        // admin_unit: ambil semua ID pegawai dari unitnya di SIMPEL
+        const { data: unitEmps, error: empErr } = await supabaseSimpelAdmin
+          .from('employees').select('id').eq('department', userUnit);
+        if (!empErr) {
+          employeeIdsFilter = (unitEmps || []).map(e => e.id);
           if (employeeIdsFilter.length > 0) {
-            countQuery = countQuery.in("employee_id", employeeIdsFilter);
+            countQuery = countQuery.in('employee_id', employeeIdsFilter);
           } else {
-            // No employees in this unit, return empty result
-            countQuery = countQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000"); // Non-existent ID
+            countQuery = countQuery.eq('employee_id', NO_ID);
           }
         }
       }

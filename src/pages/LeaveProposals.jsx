@@ -1,108 +1,109 @@
 ﻿import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FileText, Plus, List, CheckCircle, XCircle, Clock, Calendar as CalendarIcon, User, UserCheck, Check, ChevronsUpDown } from "lucide-react";
+import {
+  FileText, Plus, CheckCircle, XCircle, Clock, User,
+  Check, Forward, Printer, ChevronDown,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 import { AuthManager } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import useLeaveProposals from "@/hooks/useLeaveProposals";
 import LeaveProposalForm from "@/components/leave_proposals/LeaveProposalForm";
+import { downloadLeaveProposalLetter } from "@/utils/leaveProposalLetterGenerator";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
+
+const STATUS_CONFIG = {
+  pending:   { label: "Menunggu",     color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30", icon: Clock },
+  approved:  { label: "Disetujui",    color: "bg-green-500/20 text-green-300 border-green-500/30",   icon: CheckCircle },
+  rejected:  { label: "Ditolak",      color: "bg-red-500/20 text-red-300 border-red-500/30",         icon: XCircle },
+  forwarded: { label: "Diteruskan ke Admin Pusat", color: "bg-blue-500/20 text-blue-300 border-blue-500/30", icon: Forward },
+  processed: { label: "Diproses",     color: "bg-slate-500/20 text-slate-300 border-slate-500/30",   icon: FileText },
+};
+
+function StatusBadge({ status }) {
+  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.color}`}>
+      <Icon className="w-3 h-3" />
+      {cfg.label}
+    </span>
+  );
+}
 
 const LeaveProposals = () => {
   const { toast } = useToast();
   const currentUser = AuthManager.getUserSession();
   const isEmployee = currentUser?.role === 'employee';
   const isAdminUnit = currentUser?.role === 'admin_unit';
-  
-  const { proposals, isLoading, fetchProposals, approveEmployeeProposal, rejectEmployeeProposal } = useLeaveProposals();
+
+  const {
+    proposals, isLoading, fetchProposals,
+    approveEmployeeProposal, rejectEmployeeProposal, forwardToAdminPusat,
+  } = useLeaveProposals();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [tableExists, setTableExists] = useState(true);
-  const [activeTab, setActiveTab] = useState("my-proposals"); // "my-proposals" or "employee-approvals"
-  
-  // Signer management for approvals
+  const [activeTab, setActiveTab] = useState("my-proposals");
+
+  // Signers from localStorage
   const [signers, setSigners] = useState([]);
   const [selectedSigner, setSelectedSigner] = useState("");
+
+  // Dialog state
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
-  const [showRejectDialog, setShowRejectDialog] = useState(false);
+  const [showRejectDialog, setShowRejectDialog]   = useState(false);
+  const [showForwardDialog, setShowForwardDialog] = useState(false);
   const [targetProposal, setTargetProposal] = useState(null);
-  
-  // Approval Form Data
+
   const [letterNumber, setLetterNumber] = useState("");
-  const [letterDate, setLetterDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [approvalNotes, setApprovalNotes] = useState("");
+  const [letterDate, setLetterDate]     = useState(format(new Date(), "yyyy-MM-dd"));
+  const [approvalNotes, setApprovalNotes]   = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
-  const [submittingApproval, setSubmittingApproval] = useState(false);
+  const [forwardNote, setForwardNote]       = useState("");
+  const [submitting, setSubmitting]         = useState(false);
 
-  // Check if tables exist on mount
+  // Check table existence
   useEffect(() => {
-    const checkTableExists = async () => {
-      try {
-        const { error } = await supabase
-          .from("leave_proposals")
-          .select("*")
-          .limit(1);
-
-        if (error && error.code === "42P01") {
-          setTableExists(false);
-        } else {
-          setTableExists(true);
-        }
-      } catch (err) {
-        console.error("Error checking table existence:", err);
-        setTableExists(false);
-      }
-    };
-
-    checkTableExists();
+    supabase.from("leave_proposals").select("id").limit(1)
+      .then(({ error }) => {
+        setTableExists(!(error && error.code === "42P01"));
+      });
   }, []);
 
-  // Fetch signers on mount
+  // Load signers from localStorage
   useEffect(() => {
-    const loadSigners = () => {
+    try {
       const saved = localStorage.getItem("saved_signers");
       if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          setSigners(parsed);
-          if (parsed.length > 0) {
-            setSelectedSigner(parsed[0].name);
-          }
-        } catch (e) {
-          console.error("Error parsing saved_signers", e);
-        }
+        const parsed = JSON.parse(saved);
+        setSigners(parsed);
+        if (parsed.length > 0) setSelectedSigner(parsed[0].name);
       }
-    };
-    loadSigners();
+    } catch { /* ignore */ }
   }, []);
 
-  // Check user permission
   if (!currentUser || (currentUser.role !== 'admin_unit' && currentUser.role !== 'employee')) {
     return (
       <div className="p-6">
         <Card className="bg-red-900/20 border-red-700/50">
-          <CardContent className="p-6">
-            <div className="text-center">
-              <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-              <h2 className="text-xl font-bold text-white mb-2">Akses Ditolak</h2>
-              <p className="text-slate-300">
-                Hanya Pegawai dan Admin Unit yang dapat mengakses halaman ini.
-              </p>
-            </div>
+          <CardContent className="p-6 text-center">
+            <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">Akses Ditolak</h2>
+            <p className="text-slate-300">Hanya Pegawai dan Admin Unit yang dapat mengakses halaman ini.</p>
           </CardContent>
         </Card>
       </div>
@@ -111,32 +112,25 @@ const LeaveProposals = () => {
 
   const handleCreateProposal = async (proposalData) => {
     try {
-      console.log("🔍 Creating proposal with data:", proposalData);
-
-      const proposerUnit = isEmployee 
-        ? proposalData.proposer_unit 
+      const proposerUnit = isEmployee
+        ? proposalData.proposer_unit
         : (currentUser.department || "Unknown");
 
-      const proposalPayload = {
-        proposal_title: proposalData.title,
-        proposed_by: currentUser.id,
-        proposer_name: currentUser.name,
-        proposer_unit: proposerUnit,
-        notes: proposalData.notes || "",
-        total_employees: proposalData.employees.length,
-        status: "pending"
-      };
-
-      // Create proposal
       const { data: proposal, error: proposalError } = await supabase
         .from("leave_proposals")
-        .insert(proposalPayload)
+        .insert({
+          proposal_title: proposalData.title,
+          proposed_by: currentUser.id,
+          proposer_name: currentUser.name,
+          proposer_unit: proposerUnit,
+          notes: proposalData.notes || "",
+          total_employees: proposalData.employees.length,
+          status: "pending",
+        })
         .select()
         .single();
-
       if (proposalError) throw proposalError;
 
-      // Create proposal items
       const proposalItems = proposalData.employees.map(emp => ({
         proposal_id: proposal.id,
         employee_id: emp.employee_id,
@@ -152,341 +146,218 @@ const LeaveProposals = () => {
         leave_quota_year: emp.leave_quota_year,
         reason: emp.reason || "",
         address_during_leave: emp.address_during_leave || "",
-        status: "proposed"
+        status: "proposed",
       }));
 
-      const { error: itemsError } = await supabase
-        .from("leave_proposal_items")
-        .insert(proposalItems);
-
+      const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
       if (itemsError) throw itemsError;
 
       toast({
-        title: "Success",
-        description: isEmployee 
-          ? "Pengajuan cuti berhasil dikirim ke Admin Unit" 
-          : "Usulan cuti berhasil dibuat dan dikirim ke Master Admin",
+        title: "Berhasil",
+        description: isEmployee
+          ? "Pengajuan cuti berhasil dikirim ke Admin Unit"
+          : "Usulan cuti berhasil dibuat",
       });
-
       setShowCreateForm(false);
       fetchProposals();
     } catch (error) {
-      console.error("Error creating proposal:", error);
-      toast({
-        variant: "destructive",
-        title: "Gagal Membuat Usulan",
-        description: error.message,
-      });
+      toast({ variant: "destructive", title: "Gagal Membuat Usulan", description: error.message });
     }
   };
 
-  const handleOpenApproveDialog = (proposal) => {
+  const openApproveDialog = (proposal) => {
     setTargetProposal(proposal);
     setLetterNumber(`SRT/CUTI/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
+    setLetterDate(format(new Date(), "yyyy-MM-dd"));
     setApprovalNotes("");
     setShowApprovalDialog(true);
   };
-
-  const handleOpenRejectDialog = (proposal) => {
-    setTargetProposal(proposal);
-    setRejectionReason("");
-    setShowRejectDialog(true);
-  };
+  const openRejectDialog  = (proposal) => { setTargetProposal(proposal); setRejectionReason(""); setShowRejectDialog(true); };
+  const openForwardDialog = (proposal) => { setTargetProposal(proposal); setForwardNote(""); setShowForwardDialog(true); };
 
   const handleApproveSubmit = async () => {
     if (!selectedSigner) {
-      toast({
-        title: "Peringatan",
-        description: "Silakan pilih penandatangan surat terlebih dahulu.",
-        variant: "destructive"
-      });
+      toast({ title: "Peringatan", description: "Silakan pilih penandatangan terlebih dahulu.", variant: "destructive" });
       return;
     }
-    
-    setSubmittingApproval(true);
+    setSubmitting(true);
     try {
-      const approvalData = {
+      await approveEmployeeProposal(targetProposal.id, targetProposal.leave_proposal_items, {
         letter_number: letterNumber,
         letter_date: letterDate,
         signed_by: selectedSigner,
-        notes: approvalNotes
-      };
-      
-      await approveEmployeeProposal(targetProposal.id, targetProposal.leave_proposal_items, approvalData);
+        notes: approvalNotes,
+      });
       setShowApprovalDialog(false);
       setTargetProposal(null);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSubmittingApproval(false);
-    }
+    } catch { /* handled by hook */ }
+    finally { setSubmitting(false); }
   };
 
   const handleRejectSubmit = async () => {
     if (!rejectionReason.trim()) {
-      toast({
-        title: "Peringatan",
-        description: "Alasan penolakan harus diisi.",
-        variant: "destructive"
-      });
+      toast({ title: "Peringatan", description: "Alasan penolakan harus diisi.", variant: "destructive" });
       return;
     }
-
-    setSubmittingApproval(true);
+    setSubmitting(true);
     try {
       await rejectEmployeeProposal(targetProposal.id, rejectionReason);
       setShowRejectDialog(false);
       setTargetProposal(null);
+    } catch { /* handled by hook */ }
+    finally { setSubmitting(false); }
+  };
+
+  const handleForwardSubmit = async () => {
+    setSubmitting(true);
+    try {
+      await forwardToAdminPusat(targetProposal.id, forwardNote);
+      setShowForwardDialog(false);
+      setTargetProposal(null);
+    } catch { /* handled by hook */ }
+    finally { setSubmitting(false); }
+  };
+
+  const handlePrintApprovedLetter = async (proposal) => {
+    try {
+      toast({ title: "Menyiapkan dokumen...", description: "Mohon tunggu sebentar." });
+      await downloadLeaveProposalLetter({
+        proposal: {
+          ...proposal,
+          letter_number: proposal.letter_number || "",
+          letter_date: proposal.letter_date || new Date().toISOString(),
+        },
+        proposalItems: proposal.leave_proposal_items || [],
+        organization: {
+          name: currentUser?.department || "UNIT KERJA",
+          department: currentUser?.department || "",
+          address: "",
+          city: "",
+          phone: "",
+          email: "",
+        },
+      });
     } catch (err) {
-      console.error(err);
-    } finally {
-      setSubmittingApproval(false);
+      toast({ variant: "destructive", title: "Gagal Generate Surat", description: err.message });
     }
   };
 
-  const getStatusBadge = (status) => {
-    const statusConfig = {
-      pending: { label: "Menunggu", variant: "default", icon: Clock },
-      approved: { label: "Disetujui", variant: "success", icon: CheckCircle },
-      rejected: { label: "Ditolak", variant: "destructive", icon: XCircle },
-      processed: { label: "Diproses", variant: "secondary", icon: FileText },
-    };
+  // Filter proposals for display
+  const displayProposals = proposals.filter((p) => {
+    if (isEmployee) return p.proposed_by === currentUser.id;
+    if (activeTab === "my-proposals") return p.proposed_by === currentUser.id;
+    // employee-approvals: proposals from employees in this unit (not created by admin themselves)
+    return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department;
+  });
 
-    const config = statusConfig[status] || statusConfig.pending;
-    const Icon = config.icon;
-
-    return (
-      <Badge variant={config.variant} className="flex items-center gap-1 w-fit">
-        <Icon className="w-3 h-3" />
-        {config.label}
-      </Badge>
-    );
-  };
+  const pendingEmployeeCount = proposals.filter(
+    p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending'
+  ).length;
 
   if (showCreateForm) {
     return (
       <div className="p-6">
-        <LeaveProposalForm
-          onSubmit={handleCreateProposal}
-          onCancel={() => setShowCreateForm(false)}
-        />
+        <LeaveProposalForm onSubmit={handleCreateProposal} onCancel={() => setShowCreateForm(false)} />
       </div>
     );
   }
 
-  // Show setup message if tables don't exist
   if (!tableExists) {
     return (
       <div className="p-6">
         <Card className="bg-slate-800/50 border-slate-700/50">
-          <CardContent className="p-8">
-            <div className="text-center text-white">
-              <FileText className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-              <h2 className="text-xl font-bold mb-3">Fitur Usulan Cuti Belum Tersedia</h2>
-              <p className="text-slate-400 mb-4">
-                Sistem usulan cuti belum dikonfigurasi. Tabel database yang diperlukan belum dibuat.
-              </p>
-            </div>
+          <CardContent className="p-8 text-center text-white">
+            <FileText className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+            <h2 className="text-xl font-bold mb-3">Fitur Usulan Cuti Belum Tersedia</h2>
+            <p className="text-slate-400">Tabel database yang diperlukan belum dibuat.</p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // Filter proposals based on active tab and role
-  // "my-proposals" shows:
-  // - For employee: proposals proposed by them.
-  // - For admin_unit: proposals created by them (where proposed_by === currentUser.id).
-  // "employee-approvals" shows:
-  // - For admin_unit: proposals proposed by employees in their unit (proposed_by !== currentUser.id && proposer_unit === currentUser.department).
-  const displayProposals = proposals.filter((p) => {
-    if (isEmployee) {
-      return p.proposed_by === currentUser.id;
-    }
-    
-    // Unit admin filters
-    if (activeTab === "my-proposals") {
-      return p.proposed_by === currentUser.id;
-    } else {
-      return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department;
-    }
-  });
-
   return (
     <div className="p-6 space-y-6 text-white">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex justify-between items-center"
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold mb-2">
             {isEmployee ? "Pengajuan Cuti Mandiri" : "Usulan & Pengajuan Cuti"}
           </h1>
           <p className="text-slate-400">
-            {isEmployee 
-              ? "Ajukan cuti dan pantau status persetujuan dari Admin Unit Anda" 
-              : `Kelola usulan unit dan persetujuan cuti pegawai di lingkungan ${currentUser.department}`}
+            {isEmployee
+              ? "Ajukan cuti dan pantau status persetujuan dari Admin Unit Anda"
+              : `Kelola usulan unit dan persetujuan cuti pegawai di ${currentUser.department}`}
           </p>
         </div>
-        <Button
-          onClick={() => setShowCreateForm(true)}
-          className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-        >
+        <Button onClick={() => setShowCreateForm(true)} className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700">
           <Plus className="w-4 h-4 mr-2" />
           {isEmployee ? "Ajukan Cuti Baru" : "Buat Usulan Baru"}
         </Button>
       </motion.div>
 
-      {/* Tabs (Only shown for Admin Unit role) */}
+      {/* Tabs (Admin Unit only) */}
       {isAdminUnit && (
         <div className="flex border-b border-slate-700/50 space-x-4">
-          <button
-            onClick={() => setActiveTab("my-proposals")}
-            className={`pb-3 font-semibold text-sm transition-all relative ${activeTab === "my-proposals" ? "text-blue-400" : "text-slate-400 hover:text-white"}`}
-          >
-            Usulan Unit (Ke Master Admin)
-            {activeTab === "my-proposals" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />}
-          </button>
-          <button
-            onClick={() => setActiveTab("employee-approvals")}
-            className={`pb-3 font-semibold text-sm transition-all relative ${activeTab === "employee-approvals" ? "text-blue-400" : "text-slate-400 hover:text-white"}`}
-          >
-            Persetujuan Cuti Pegawai
-            {activeTab === "employee-approvals" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />}
-            {proposals.filter(p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending').length > 0 && (
-              <Badge className="ml-2 bg-yellow-500 text-slate-900 w-5 h-5 p-0 flex items-center justify-center rounded-full text-xs inline-flex">
-                {proposals.filter(p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending').length}
-              </Badge>
-            )}
-          </button>
+          {[
+            { key: "my-proposals", label: "Usulan Unit (ke Admin Pusat)" },
+            { key: "employee-approvals", label: "Persetujuan Cuti Pegawai", badge: pendingEmployeeCount },
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`pb-3 font-semibold text-sm transition-all relative flex items-center gap-2 ${activeTab === tab.key ? "text-blue-400" : "text-slate-400 hover:text-white"}`}
+            >
+              {tab.label}
+              {tab.badge > 0 && (
+                <span className="bg-yellow-500 text-slate-900 w-5 h-5 rounded-full text-xs flex items-center justify-center">{tab.badge}</span>
+              )}
+              {activeTab === tab.key && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Proposals List */}
+      {/* Proposal List */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <Card className="bg-slate-800/50 border-slate-700/50">
           <CardHeader>
             <CardTitle>
-              {isEmployee 
-                ? "Riwayat Pengajuan Cuti Mandiri" 
-                : activeTab === "my-proposals" ? "Daftar Usulan Unit ke Master Admin" : "Daftar Persetujuan Cuti Pegawai"}
+              {isEmployee ? "Riwayat Pengajuan Cuti"
+                : activeTab === "my-proposals" ? "Daftar Usulan Unit ke Admin Pusat"
+                : "Daftar Pengajuan Cuti Pegawai"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto" />
                 <p className="text-slate-400 mt-2">Memuat data...</p>
               </div>
             ) : displayProposals.length === 0 ? (
               <div className="text-center py-8">
                 <FileText className="w-16 h-16 text-slate-600 mx-auto mb-4" />
                 <h3 className="text-lg font-medium mb-2">Belum Ada Data</h3>
-                <p className="text-slate-400 mb-4">
-                  {isEmployee 
-                    ? "Anda belum pernah mengajukan cuti mandiri." 
-                    : activeTab === "my-proposals" ? "Belum ada usulan batch yang dibuat untuk unit Anda." : "Belum ada pegawai yang mengajukan cuti mandiri."}
+                <p className="text-slate-400">
+                  {isEmployee ? "Anda belum pernah mengajukan cuti."
+                    : activeTab === "my-proposals" ? "Belum ada usulan yang dibuat untuk unit Anda."
+                    : "Belum ada pegawai yang mengajukan cuti."}
                 </p>
-                {isEmployee && (
-                  <Button
-                    onClick={() => setShowCreateForm(true)}
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Ajukan Cuti Pertama
-                  </Button>
-                )}
               </div>
             ) : (
               <div className="space-y-4">
                 {displayProposals.map((proposal) => (
-                  <div
+                  <ProposalCard
                     key={proposal.id}
-                    className="p-4 bg-slate-700/30 rounded-lg border border-slate-600/50 hover:bg-slate-700/50 transition-colors"
-                  >
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                      <div className="flex-1">
-                        <div className="flex flex-wrap items-center gap-3 mb-2">
-                          <h3 className="font-semibold text-white text-lg">{proposal.proposal_title}</h3>
-                          {getStatusBadge(proposal.status)}
-                        </div>
-                        
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400 mb-3">
-                          <span>📅 {format(new Date(proposal.proposal_date), "dd MMM yyyy", { locale: id })}</span>
-                          <span>👥 {proposal.total_employees} pegawai</span>
-                          {isAdminUnit && activeTab === "employee-approvals" && (
-                            <span className="flex items-center text-blue-400">
-                              <User className="w-3.5 h-3.5 mr-1" />
-                              Pemohon: {proposal.proposer_name}
-                            </span>
-                          )}
-                        </div>
-                        
-                        {proposal.notes && (
-                          <p className="text-slate-300 text-sm bg-slate-800/40 p-2.5 rounded border border-slate-700/30 mb-2">{proposal.notes}</p>
-                        )}
-                        
-                        {proposal.status === 'rejected' && proposal.rejection_reason && (
-                          <div className="p-2.5 bg-red-900/20 border border-red-700/50 rounded text-sm text-red-400">
-                            <strong>Alasan Ditolak:</strong> {proposal.rejection_reason}
-                          </div>
-                        )}
-
-                        {proposal.status === 'approved' && proposal.letter_number && (
-                          <div className="p-2.5 bg-green-950/30 border border-green-700/40 rounded text-sm text-green-400">
-                            <strong>Nomor Surat Cuti:</strong> {proposal.letter_number} 
-                            {proposal.letter_date && ` | Tanggal: ${format(new Date(proposal.letter_date), "dd MMMM yyyy", { locale: id })}`}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Approvals action buttons (Only for admin unit on employee-approvals tab) */}
-                      {isAdminUnit && activeTab === "employee-approvals" && proposal.status === "pending" && (
-                        <div className="flex md:flex-col lg:flex-row gap-2 justify-end">
-                          <Button
-                            onClick={() => handleOpenApproveDialog(proposal)}
-                            className="bg-green-600 hover:bg-green-700 text-white size-sm"
-                          >
-                            <Check className="w-4 h-4 mr-1.5" />
-                            Setujui
-                          </Button>
-                          <Button
-                            onClick={() => handleOpenRejectDialog(proposal)}
-                            variant="destructive"
-                            className="size-sm"
-                          >
-                            <XCircle className="w-4 h-4 mr-1.5" />
-                            Tolak
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Employee List Details Preview */}
-                    {proposal.leave_proposal_items && proposal.leave_proposal_items.length > 0 && (
-                      <div className="mt-4 pt-3 border-t border-slate-700/50">
-                        <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-2">Detail Pengajuan:</span>
-                        <div className="space-y-2">
-                          {proposal.leave_proposal_items.map((item, index) => (
-                            <div key={index} className="flex flex-col sm:flex-row sm:items-center justify-between text-sm bg-slate-800/25 p-2 rounded">
-                              <div>
-                                <span className="font-semibold text-white">{item.employee_name} ({item.employee_nip})</span>
-                                <p className="text-xs text-slate-400">{item.leave_type_name} | {item.reason || "Tidak ada keterangan"}</p>
-                              </div>
-                              <div className="text-right sm:text-right mt-1 sm:mt-0">
-                                <span className="text-slate-300 block font-medium">
-                                  {format(new Date(item.start_date), "dd MMM yyyy", { locale: id })} - {format(new Date(item.end_date), "dd MMM yyyy", { locale: id })}
-                                </span>
-                                <span className="text-xs text-slate-400">{item.days_requested} hari kerja</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    proposal={proposal}
+                    isEmployee={isEmployee}
+                    isAdminUnit={isAdminUnit}
+                    activeTab={activeTab}
+                    onApprove={openApproveDialog}
+                    onReject={openRejectDialog}
+                    onForward={openForwardDialog}
+                    onPrint={handlePrintApprovedLetter}
+                  />
                 ))}
               </div>
             )}
@@ -494,118 +365,98 @@ const LeaveProposals = () => {
         </Card>
       </motion.div>
 
-      {/* Approval Dialog */}
+      {/* === Approve Dialog === */}
       <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
-            <DialogTitle>Persetujuan Cuti Pegawai</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Isi data administrasi surat cuti untuk menyetujui pengajuan cuti ini.
-            </DialogDescription>
+            <DialogTitle>Setujui & Terbitkan Surat Cuti</DialogTitle>
+            <DialogDescription className="text-slate-400">Isi data surat cuti. Menyetujui akan langsung membuat record cuti dan memotong saldo.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-3">
+          <div className="space-y-4 py-2">
             <div>
-              <Label className="text-slate-300">Pilih Penandatangan (Signer)</Label>
+              <Label className="text-slate-300">Penandatangan Surat</Label>
               {signers.length === 0 ? (
-                <p className="text-xs text-amber-400 mt-1">
-                  ⚠️ Belum ada penandatangan yang disimpan. Silakan atur penandatangan di halaman buat surat atau menu pengaturan terlebih dahulu.
-                </p>
+                <p className="text-xs text-amber-400 mt-1">⚠️ Belum ada penandatangan. Atur di halaman Surat Keterangan terlebih dahulu.</p>
               ) : (
-                <select
-                  value={selectedSigner}
-                  onChange={(e) => setSelectedSigner(e.target.value)}
-                  className="w-full bg-slate-700/50 border border-slate-600/50 rounded-md p-2 mt-1 focus:outline-none"
-                >
-                  {signers.map((s, idx) => (
-                    <option key={idx} value={s.name} className="bg-slate-800">{s.name} ({s.position_name})</option>
+                <select value={selectedSigner} onChange={e => setSelectedSigner(e.target.value)}
+                  className="w-full mt-1 bg-slate-700/50 border border-slate-600/50 rounded-md p-2 text-white focus:outline-none">
+                  {signers.map((s, i) => (
+                    <option key={i} value={s.name} className="bg-slate-800">{s.name} — {s.position_name}</option>
                   ))}
                 </select>
               )}
             </div>
             <div>
-              <Label className="text-slate-300">Nomor Surat Cuti</Label>
-              <Input
-                value={letterNumber}
-                onChange={(e) => setLetterNumber(e.target.value)}
-                placeholder="Contoh: SRT/CUTI/2026/001"
-                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white"
-              />
+              <Label className="text-slate-300">Nomor Surat</Label>
+              <Input value={letterNumber} onChange={e => setLetterNumber(e.target.value)}
+                placeholder="SRT/CUTI/2026/001" className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
             </div>
             <div>
-              <Label className="text-slate-300">Tanggal Surat Cuti</Label>
-              <Input
-                type="date"
-                value={letterDate}
-                onChange={(e) => setLetterDate(e.target.value)}
-                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white"
-              />
+              <Label className="text-slate-300">Tanggal Surat</Label>
+              <Input type="date" value={letterDate} onChange={e => setLetterDate(e.target.value)}
+                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
             </div>
             <div>
-              <Label className="text-slate-300">Catatan Persetujuan (Opsional)</Label>
-              <Textarea
-                value={approvalNotes}
-                onChange={(e) => setApprovalNotes(e.target.value)}
-                placeholder="Catatan tambahan persetujuan..."
-                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white"
-                rows={2}
-              />
+              <Label className="text-slate-300">Catatan (Opsional)</Label>
+              <Textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)}
+                rows={2} className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
             </div>
           </div>
-          <div className="flex justify-end space-x-2 pt-4 border-t border-slate-700/50">
-            <Button
-              variant="outline"
-              onClick={() => setShowApprovalDialog(false)}
-              className="bg-slate-700 border-slate-600 hover:bg-slate-600 text-white"
-            >
-              Batal
-            </Button>
-            <Button
-              onClick={handleApproveSubmit}
-              disabled={submittingApproval || signers.length === 0}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              {submittingApproval ? "Menyetujui..." : "Setujui Pengajuan"}
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50">
+            <Button variant="outline" onClick={() => setShowApprovalDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
+            <Button onClick={handleApproveSubmit} disabled={submitting || signers.length === 0} className="bg-green-600 hover:bg-green-700">
+              {submitting ? "Memproses..." : "Setujui & Terbitkan"}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Reject Dialog */}
+      {/* === Reject Dialog === */}
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
             <DialogTitle>Tolak Pengajuan Cuti</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Berikan alasan penolakan untuk pengajuan cuti ini agar pegawai dapat melihatnya.
-            </DialogDescription>
+            <DialogDescription className="text-slate-400">Berikan alasan penolakan agar pegawai dapat melihatnya.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-3">
+          <div className="space-y-4 py-2">
             <div>
-              <Label className="text-slate-300 font-semibold">Alasan Penolakan</Label>
-              <Textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Alasan penolakan pengajuan cuti..."
-                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white"
-                rows={3}
-                required
-              />
+              <Label className="text-slate-300 font-semibold">Alasan Penolakan *</Label>
+              <Textarea value={rejectionReason} onChange={e => setRejectionReason(e.target.value)}
+                placeholder="Tuliskan alasan penolakan..." rows={3}
+                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
             </div>
           </div>
-          <div className="flex justify-end space-x-2 pt-4 border-t border-slate-700/50">
-            <Button
-              variant="outline"
-              onClick={() => setShowRejectDialog(false)}
-              className="bg-slate-700 border-slate-600 hover:bg-slate-600 text-white"
-            >
-              Batal
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50">
+            <Button variant="outline" onClick={() => setShowRejectDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
+            <Button onClick={handleRejectSubmit} disabled={submitting || !rejectionReason.trim()} className="bg-red-600 hover:bg-red-700">
+              {submitting ? "Menolak..." : "Tolak Pengajuan"}
             </Button>
-            <Button
-              onClick={handleRejectSubmit}
-              disabled={submittingApproval || !rejectionReason.trim()}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
-              {submittingApproval ? "Menolak..." : "Tolak Pengajuan"}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* === Forward Dialog === */}
+      <Dialog open={showForwardDialog} onOpenChange={setShowForwardDialog}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Teruskan ke Admin Pusat</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Pengajuan ini akan diteruskan ke Admin Pusat untuk diproses lebih lanjut. Admin Pusat dapat menyetujui atau menolaknya.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label className="text-slate-300">Catatan Penerusan (Opsional)</Label>
+              <Textarea value={forwardNote} onChange={e => setForwardNote(e.target.value)}
+                placeholder="Catatan tambahan untuk Admin Pusat..." rows={3}
+                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50">
+            <Button variant="outline" onClick={() => setShowForwardDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
+            <Button onClick={handleForwardSubmit} disabled={submitting} className="bg-blue-600 hover:bg-blue-700">
+              <Forward className="w-4 h-4 mr-2" />
+              {submitting ? "Meneruskan..." : "Teruskan ke Admin Pusat"}
             </Button>
           </div>
         </DialogContent>
@@ -613,5 +464,114 @@ const LeaveProposals = () => {
     </div>
   );
 };
+
+// ─── ProposalCard ────────────────────────────────────────────────────────────
+function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint }) {
+  const isEmployeeApprovalTab = isAdminUnit && activeTab === "employee-approvals";
+  const canAct = isEmployeeApprovalTab && proposal.status === "pending";
+  const canPrint = isEmployeeApprovalTab && proposal.status === "approved";
+
+  return (
+    <div className="p-4 bg-slate-700/30 rounded-lg border border-slate-600/50 hover:bg-slate-700/50 transition-colors">
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <h3 className="font-semibold text-white text-base">{proposal.proposal_title}</h3>
+            <StatusBadge status={proposal.status} />
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400 mb-2">
+            <span>📅 {format(new Date(proposal.proposal_date || proposal.created_at), "dd MMM yyyy", { locale: id })}</span>
+            <span>👥 {proposal.total_employees} pegawai</span>
+            {isEmployeeApprovalTab && (
+              <span className="flex items-center text-blue-400">
+                <User className="w-3.5 h-3.5 mr-1" />
+                Pemohon: {proposal.proposer_name}
+              </span>
+            )}
+          </div>
+          {proposal.notes && (
+            <p className="text-slate-300 text-sm bg-slate-800/40 p-2 rounded border border-slate-700/30 mb-2">{proposal.notes}</p>
+          )}
+          {proposal.status === 'rejected' && proposal.rejection_reason && (
+            <div className="p-2 bg-red-900/20 border border-red-700/50 rounded text-sm text-red-400">
+              <strong>Alasan Ditolak:</strong> {proposal.rejection_reason}
+            </div>
+          )}
+          {proposal.status === 'approved' && proposal.letter_number && (
+            <div className="p-2 bg-green-950/30 border border-green-700/40 rounded text-sm text-green-400">
+              <strong>Nomor Surat:</strong> {proposal.letter_number}
+              {proposal.letter_date && ` — ${format(new Date(proposal.letter_date), "dd MMMM yyyy", { locale: id })}`}
+            </div>
+          )}
+          {proposal.status === 'forwarded' && (
+            <div className="p-2 bg-blue-900/20 border border-blue-700/40 rounded text-sm text-blue-400">
+              Diteruskan ke Admin Pusat untuk diproses.
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons for admin_unit on employee-approvals tab */}
+        {(canAct || canPrint) && (
+          <div className="flex items-center gap-2">
+            {canPrint && (
+              <Button size="sm" variant="outline" onClick={() => onPrint(proposal)}
+                className="border-slate-600 text-slate-300 hover:bg-slate-700">
+                <Printer className="w-4 h-4 mr-1" /> Cetak Surat
+              </Button>
+            )}
+            {canAct && (
+              <>
+                <Button size="sm" onClick={() => onApprove(proposal)} className="bg-green-600 hover:bg-green-700 text-white">
+                  <Check className="w-4 h-4 mr-1" /> Setujui
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700 px-2">
+                      <ChevronDown className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-slate-800 border-slate-700 text-white">
+                    <DropdownMenuItem onClick={() => onForward(proposal)} className="hover:bg-slate-700 cursor-pointer">
+                      <Forward className="w-4 h-4 mr-2 text-blue-400" />
+                      Teruskan ke Admin Pusat
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onReject(proposal)} className="hover:bg-slate-700 cursor-pointer text-red-400 focus:text-red-400">
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Tolak Pengajuan
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Items preview */}
+      {proposal.leave_proposal_items?.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-slate-700/50">
+          <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-2">Detail:</span>
+          <div className="space-y-1.5">
+            {proposal.leave_proposal_items.map((item, i) => (
+              <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between text-sm bg-slate-800/25 px-3 py-1.5 rounded">
+                <div>
+                  <span className="font-medium text-white">{item.employee_name}</span>
+                  <span className="text-slate-400 ml-1 text-xs">({item.employee_nip})</span>
+                  <p className="text-xs text-slate-400">{item.leave_type_name} · {item.reason || "—"}</p>
+                </div>
+                <div className="text-right mt-1 sm:mt-0">
+                  <span className="text-slate-300 text-xs">
+                    {format(new Date(item.start_date), "dd MMM", { locale: id })} – {format(new Date(item.end_date), "dd MMM yyyy", { locale: id })}
+                  </span>
+                  <p className="text-xs text-slate-400">{item.days_requested} hari kerja</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default LeaveProposals;

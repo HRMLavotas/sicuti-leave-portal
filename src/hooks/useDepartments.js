@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
-import { OptimizedQueries } from "@/lib/supabaseOptimized";
+import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
+import { AuthManager } from "@/lib/auth";
 
+/**
+ * Hook untuk mengambil daftar unit kerja (department) dari SIMPEL.
+ * admin_unit hanya melihat unitnya sendiri; admin_pusat melihat semua.
+ */
 export const useDepartments = () => {
   const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -12,30 +17,33 @@ export const useDepartments = () => {
       setError(null);
 
       try {
-        // Use optimized query with caching
-        const uniqueDepartments = await OptimizedQueries.getDepartments();
+        const currentUser = AuthManager.getUserSession();
 
-        // Format for autocomplete: add special options at the top
+        let query = supabaseSimpelAdmin
+          .from("employees")
+          .select("department")
+          .not("department", "is", null);
+
+        // admin_unit hanya lihat unitnya sendiri
+        if (currentUser?.role === "admin_unit" && currentUser?.department) {
+          query = query.eq("department", currentUser.department);
+        }
+
+        const { data, error: qErr } = await query;
+        if (qErr) throw qErr;
+
+        const unique = [...new Set(data.map(d => d.department).filter(Boolean))].sort();
+
         const formattedOptions = [
           { value: "", label: "Semua Unit Kerja" },
-          { value: "All Units", label: "All Units (Master Admin)" },
-          ...uniqueDepartments.map((d) => ({ value: d, label: d })),
+          ...unique.map(d => ({ value: d, label: d })),
         ];
 
-        console.log("Departments loaded:", formattedOptions);
         setDepartments(formattedOptions);
       } catch (err) {
-        console.error("Error fetching departments:", err);
+        console.error("useDepartments error:", err);
         setError(err.message);
-        // Fallback data
-        setDepartments([
-          { value: "", label: "Semua Unit Kerja" },
-          { value: "All Units", label: "All Units (Master Admin)" },
-          { value: "Teknologi Informasi", label: "Teknologi Informasi" },
-          { value: "Human Resources", label: "Human Resources" },
-          { value: "Keuangan", label: "Keuangan" },
-          { value: "Operasional", label: "Operasional" },
-        ]);
+        setDepartments([{ value: "", label: "Semua Unit Kerja" }]);
       } finally {
         setIsLoading(false);
       }
@@ -44,18 +52,10 @@ export const useDepartments = () => {
     fetchDepartments();
   }, []);
 
-  const refreshDepartments = () => {
-    // Clear cache and refetch
-    if (typeof OptimizedQueries.invalidateCache === "function") {
-      OptimizedQueries.invalidateCache("departments");
-    }
-    fetchDepartments();
-  };
-
   return {
     departments,
     isLoadingDepartments: isLoading,
     departmentsError: error,
-    refreshDepartments,
   };
 };
+

@@ -11,7 +11,8 @@ import {
   Building2,
   User,
   Calendar as CalendarIcon,
-  Download
+  Download,
+  Forward,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -93,20 +94,20 @@ const ProposalList = () => {
 
   const getStatusBadge = (status) => {
     const statusConfig = {
-      pending: { label: "Menunggu", variant: "default", icon: Clock },
-      approved: { label: "Disetujui", variant: "success", icon: CheckCircle },
-      rejected: { label: "Ditolak", variant: "destructive", icon: XCircle },
-      processed: { label: "Diproses", variant: "secondary", icon: FileText },
+      pending:   { label: "Menunggu",              color: "bg-yellow-500/20 text-yellow-300 border border-yellow-500/40" },
+      forwarded: { label: "Diteruskan Admin Unit",  color: "bg-blue-500/20 text-blue-300 border border-blue-500/40" },
+      approved:  { label: "Disetujui",              color: "bg-green-500/20 text-green-300 border border-green-500/40" },
+      rejected:  { label: "Ditolak",               color: "bg-red-500/20 text-red-300 border border-red-500/40" },
+      processed: { label: "Diproses",              color: "bg-slate-500/20 text-slate-300 border border-slate-500/40" },
+      completed: { label: "Selesai",               color: "bg-purple-500/20 text-purple-300 border border-purple-500/40" },
     };
-
-    const config = statusConfig[status] || statusConfig.pending;
-    const Icon = config.icon;
-
+    const cfg = statusConfig[status] || statusConfig.pending;
+    const Icon = { pending: Clock, forwarded: Forward, approved: CheckCircle, rejected: XCircle, processed: FileText, completed: CheckCircle }[status] || Clock;
     return (
-      <Badge variant={config.variant} className="flex items-center gap-1">
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
         <Icon className="w-3 h-3" />
-        {config.label}
-      </Badge>
+        {cfg.label}
+      </span>
     );
   };
 
@@ -209,7 +210,7 @@ const ProposalList = () => {
     try {
       const pendingProposals = selectedProposals.filter(id => {
         const proposal = proposals.find(p => p.id === id);
-        return proposal && proposal.status === 'pending';
+        return proposal && (proposal.status === 'pending' || proposal.status === 'forwarded');
       });
 
       if (pendingProposals.length === 0) {
@@ -317,7 +318,7 @@ const ProposalList = () => {
                 <div className="ml-4">
                   <p className="text-slate-400 text-sm">Menunggu Review</p>
                   <p className="text-2xl font-bold text-white">
-                    {proposals.filter(p => p.status === 'pending').length}
+                    {proposals.filter(p => p.status === 'pending' || p.status === 'forwarded').length}
                   </p>
                 </div>
               </div>
@@ -382,9 +383,11 @@ const ProposalList = () => {
                   <SelectContent className="bg-slate-700 border-slate-600">
                     <SelectItem value="all">Semua Status</SelectItem>
                     <SelectItem value="pending">Menunggu</SelectItem>
+                    <SelectItem value="forwarded">Diteruskan Admin Unit</SelectItem>
                     <SelectItem value="approved">Disetujui</SelectItem>
                     <SelectItem value="rejected">Ditolak</SelectItem>
                     <SelectItem value="processed">Diproses</SelectItem>
+                    <SelectItem value="completed">Selesai</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -462,7 +465,7 @@ const ProposalList = () => {
                           </div>
                           <div className="flex items-center">
                             <CalendarIcon className="w-4 h-4 mr-1" />
-                            {format(new Date(proposal.proposal_date), "dd MMM yyyy", { locale: id })}
+                            {format(new Date(proposal.proposal_date || proposal.created_at), "dd MMM yyyy", { locale: id })}
                           </div>
                           <div className="flex items-center">
                             <User className="w-4 h-4 mr-1" />
@@ -476,6 +479,14 @@ const ProposalList = () => {
                           <div className="mt-2 p-2 bg-red-900/20 border border-red-700/50 rounded">
                             <p className="text-red-400 text-sm">
                               <strong>Alasan ditolak:</strong> {proposal.rejection_reason}
+                            </p>
+                          </div>
+                        )}
+                        {proposal.status === 'forwarded' && (
+                          <div className="mt-2 p-2 bg-blue-900/20 border border-blue-700/50 rounded">
+                            <p className="text-blue-400 text-sm">
+                              <Forward className="w-3 h-3 inline mr-1" />
+                              <strong>Diteruskan oleh Admin Unit</strong> — menunggu persetujuan Admin Pusat.
                             </p>
                           </div>
                         )}
@@ -493,11 +504,18 @@ const ProposalList = () => {
                           variant="outline"
                           size="sm"
                           onClick={() => handleViewDetail(proposal)}
+                          className="border-slate-600 text-slate-300 hover:bg-slate-700"
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {proposal.status === 'pending' && (
+                        {(proposal.status === 'pending' || proposal.status === 'forwarded') && (
                           <>
+                            {proposal.status === 'forwarded' && (
+                              <span className="flex items-center text-xs text-blue-400 px-2 border border-blue-500/30 rounded-md bg-blue-500/10">
+                                <Forward className="w-3 h-3 mr-1" />
+                                Dari Admin Unit
+                              </span>
+                            )}
                             <Button
                               size="sm"
                               onClick={() => handleApprovalAction(proposal, 'approve')}
@@ -516,25 +534,17 @@ const ProposalList = () => {
                             </Button>
                           </>
                         )}
-                        {proposal.status === 'approved' && (
+                        {(proposal.status === 'approved' || proposal.status === 'processed') && (
                           <Button
                             size="sm"
                             onClick={() => handleGenerateLetter(proposal)}
-                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            className={proposal.status === 'approved'
+                              ? "bg-blue-600 hover:bg-blue-700 text-white"
+                              : "border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"}
+                            variant={proposal.status === 'processed' ? "outline" : undefined}
                           >
                             <Download className="w-4 h-4 mr-1" />
-                            Generate Surat
-                          </Button>
-                        )}
-                        {proposal.status === 'processed' && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleGenerateLetter(proposal)}
-                            variant="outline"
-                            className="border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white"
-                          >
-                            <Download className="w-4 h-4 mr-1" />
-                            Download Ulang
+                            {proposal.status === 'approved' ? 'Generate Surat' : 'Download Ulang'}
                           </Button>
                         )}
                       </div>
@@ -577,7 +587,7 @@ const ProposalList = () => {
                 </div>
                 <div>
                   <Label className="text-slate-300">Tanggal Usulan</Label>
-                  <p className="text-white">{format(new Date(selectedProposal.proposal_date), "dd MMMM yyyy", { locale: id })}</p>
+                  <p className="text-white">{format(new Date(selectedProposal.proposal_date || selectedProposal.created_at), "dd MMMM yyyy", { locale: id })}</p>
                 </div>
                 <div>
                   <Label className="text-slate-300">Total Pegawai</Label>
@@ -660,18 +670,33 @@ const ProposalList = () => {
               )}
             </div>
           )}
-          {selectedProposal && selectedProposal.status === 'approved' && (
+          {selectedProposal && (selectedProposal.status === 'approved' || selectedProposal.status === 'pending' || selectedProposal.status === 'forwarded') && (
             <div className="flex justify-end space-x-2 pt-4 border-t border-slate-600/50">
-              <Button
-                onClick={() => {
-                  setShowDetailDialog(false);
-                  handleGenerateLetter(selectedProposal);
-                }}
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Generate & Download Surat
-              </Button>
+              {(selectedProposal.status === 'pending' || selectedProposal.status === 'forwarded') && (
+                <>
+                  <Button
+                    variant="destructive" size="sm"
+                    onClick={() => { setShowDetailDialog(false); handleApprovalAction(selectedProposal, 'reject'); }}
+                  >
+                    <XCircle className="w-4 h-4 mr-1" /> Tolak
+                  </Button>
+                  <Button
+                    size="sm" className="bg-green-600 hover:bg-green-700"
+                    onClick={() => { setShowDetailDialog(false); handleApprovalAction(selectedProposal, 'approve'); }}
+                  >
+                    <CheckCircle className="w-4 h-4 mr-1" /> Setujui
+                  </Button>
+                </>
+              )}
+              {selectedProposal.status === 'approved' && (
+                <Button
+                  onClick={() => { setShowDetailDialog(false); handleGenerateLetter(selectedProposal); }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Generate & Download Surat
+                </Button>
+              )}
             </div>
           )}
         </DialogContent>

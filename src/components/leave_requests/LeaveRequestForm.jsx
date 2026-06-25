@@ -12,21 +12,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
-import { Loader2, Search, X, Edit, Plus } from "lucide-react";
+import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
+import { AuthManager } from "@/lib/auth";
+import { Loader2, Search, X, Plus } from "lucide-react";
 import {
   countWorkingDays,
-  fetchNationalHolidays,
   fetchNationalHolidaysFromDB,
 } from "@/utils/workingDays";
 import { calculateLeaveBalance, ensureLeaveBalance } from "@/utils/leaveBalanceCalculator";
-import EmployeeForm from "@/components/employees/EmployeeForm";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 
 const LeaveRequestForm = ({
   employees,
@@ -81,9 +74,6 @@ const LeaveRequestForm = ({
   const [hasNewColumns, setHasNewColumns] = useState(true); // True after migration
   const [holidays, setHolidays] = useState(new Set());
   const [holidaysYear, setHolidaysYear] = useState(new Date().getFullYear());
-  const [isEditEmployeeModalOpen, setIsEditEmployeeModalOpen] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState(null);
-  const [departments, setDepartments] = useState([]);
   const [overlapWarning, setOverlapWarning] = useState("");
   const [isCheckingOverlap, setIsCheckingOverlap] = useState(false);
   const [leaveBalanceSummary, setLeaveBalanceSummary] = useState(null);
@@ -126,12 +116,20 @@ const LeaveRequestForm = ({
       setIsSearching(true);
       try {
         const safeQuery = query.replace(/,/g, "");
-        const { data, error } = await supabase
+        const currentUser = AuthManager.getUserSession();
+
+        let dbQuery = supabaseSimpelAdmin
           .from("employees")
-          .select("*")
+          .select("id, nip, name, department, position_name, rank_group, asn_status")
           .or(`name.ilike.%${safeQuery}%,nip.ilike.%${safeQuery}%`)
           .limit(10);
 
+        // admin_unit hanya bisa mencari pegawai di unitnya sendiri
+        if (currentUser?.role === "admin_unit" && currentUser?.department) {
+          dbQuery = dbQuery.eq("department", currentUser.department);
+        }
+
+        const { data, error } = await dbQuery;
         if (error) throw error;
         setSearchResults(data || []);
       } catch (error) {
@@ -165,12 +163,12 @@ const LeaveRequestForm = ({
     const fetchEmployeeData = async () => {
       if (initialData?.employee_id) {
         try {
-          // Fetch the latest employee data
-          const { data: employee, error } = await supabase
+          // Fetch the latest employee data from SIMPEL
+          const { data: employee, error } = await supabaseSimpelAdmin
             .from("employees")
-            .select("*")
+            .select("id, nip, name, department, position_name, rank_group, asn_status")
             .eq("id", initialData.employee_id)
-            .single();
+            .maybeSingle();
 
           if (error) throw error;
 
@@ -455,30 +453,6 @@ const LeaveRequestForm = ({
     fetchHolidays();
   }, [formData.start_date, formData.end_date]);
 
-  // Fetch departments for EmployeeForm
-  useEffect(() => {
-    const fetchDepartments = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("employees")
-          .select("department")
-          .not("department", "is", null);
-
-        if (error) throw error;
-
-        const uniqueDepartments = [...new Set(data.map(emp => emp.department))]
-          .filter(Boolean)
-          .map(name => ({ id: name, name }));
-
-        setDepartments(uniqueDepartments);
-      } catch (error) {
-        console.error("Error fetching departments:", error);
-      }
-    };
-
-    fetchDepartments();
-  }, []);
-
   // Check for date overlap
   useEffect(() => {
     const checkOverlap = async () => {
@@ -550,66 +524,6 @@ const LeaveRequestForm = ({
 
     return () => clearTimeout(debounceCheck);
   }, [formData.employee_id, formData.start_date, formData.end_date, initialData?.id]);
-
-  const handleQuickEditEmployee = async () => {
-    if (!formData.employee_id) return;
-
-    try {
-      const { data: employee, error } = await supabase
-        .from("employees")
-        .select("*")
-        .eq("id", formData.employee_id)
-        .single();
-
-      if (error) throw error;
-
-      setEditingEmployee(employee);
-      setIsEditEmployeeModalOpen(true);
-    } catch (error) {
-      console.error("Error fetching employee for edit:", error);
-      toast({
-        variant: "destructive",
-        title: "Gagal memuat data pegawai",
-        description: error.message,
-      });
-    }
-  };
-
-  const handleEmployeeEditSuccess = async () => {
-    // Refresh employee data in form
-    if (formData.employee_id) {
-      try {
-        const { data: employee, error } = await supabase
-          .from("employees")
-          .select("*")
-          .eq("id", formData.employee_id)
-          .single();
-
-        if (error) throw error;
-
-        if (employee) {
-          setFormData((prev) => ({
-            ...prev,
-            employee_name: employee.name,
-            employee_nip: employee.nip || "",
-            employee_rank: employee.rank_group || "",
-            employee_position: employee.position_name || "",
-            employee_department: employee.department || "",
-          }));
-        }
-      } catch (error) {
-        console.error("Error refreshing employee data:", error);
-      }
-    }
-
-    setIsEditEmployeeModalOpen(false);
-    setEditingEmployee(null);
-
-    toast({
-      title: "âœ… Data Pegawai Diperbarui",
-      description: "Data pegawai berhasil diperbarui dan form cuti telah di-refresh.",
-    });
-  };
 
   const calculateDaysRequested = (start, end) => {
     if (!start || !end) return 0;
@@ -1017,21 +931,11 @@ const LeaveRequestForm = ({
           {/* Employee Details */}
           {formData.employee_id && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 p-4 mt-4 bg-slate-800/50 rounded-md border border-slate-700/50">
-              {/* Header dengan tombol Quick Edit */}
-              <div className="md:col-span-2 lg:col-span-3 flex justify-between items-center mb-2">
+              {/* Header */}
+              <div className="md:col-span-2 lg:col-span-3 mb-2">
                 <span className="text-sm font-medium text-slate-300">
                   Informasi Pegawai
                 </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleQuickEditEmployee}
-                  className="text-xs border-slate-600 text-slate-300 hover:text-white hover:border-slate-500"
-                >
-                  <Edit className="w-3 h-3 mr-1" />
-                  Quick Edit
-                </Button>
               </div>
 
               <div>
@@ -1501,15 +1405,22 @@ const LeaveRequestForm = ({
                           const val = e.target.value;
                           if (val.length > 2) {
                             setIsSearchingSigner(true);
-                            supabase
+                            const currentUser = AuthManager.getUserSession();
+                            let query = supabaseSimpelAdmin
                               .from("employees")
-                              .select("*")
+                              .select("id, nip, name, department, position_name, rank_group")
                               .or(`name.ilike.%${val}%,nip.ilike.%${val}%`)
-                              .limit(5)
-                              .then(({ data }) => {
-                                setSignerSearchResults(data || []);
-                                setIsSearchingSigner(false);
-                              });
+                              .limit(5);
+                            
+                            // admin_unit hanya bisa mencari pegawai di unitnya sendiri
+                            if (currentUser?.role === "admin_unit" && currentUser?.department) {
+                              query = query.eq("department", currentUser.department);
+                            }
+
+                            query.then(({ data }) => {
+                              setSignerSearchResults(data || []);
+                              setIsSearchingSigner(false);
+                            });
                           } else {
                             setSignerSearchResults([]);
                           }
@@ -1647,27 +1558,6 @@ const LeaveRequestForm = ({
         </div>
       </div>
 
-      {/* Quick Edit Employee Modal */}
-      <Dialog open={isEditEmployeeModalOpen} onOpenChange={setIsEditEmployeeModalOpen}>
-        <DialogContent className="sm:max-w-[600px] bg-slate-800 text-slate-300 border-slate-700">
-          <DialogHeader>
-            <DialogTitle className="text-white">Quick Edit Data Pegawai</DialogTitle>
-            <DialogDescription className="text-slate-400">
-              Update informasi pegawai yang dipilih. Perubahan akan langsung ter-refresh di form cuti.
-            </DialogDescription>
-          </DialogHeader>
-          <EmployeeForm
-            employee={editingEmployee}
-            onFormSubmit={handleEmployeeEditSuccess}
-            onCancel={() => {
-              setIsEditEmployeeModalOpen(false);
-              setEditingEmployee(null);
-            }}
-            departments={departments}
-            isLoadingDepartments={false}
-          />
-        </DialogContent>
-      </Dialog>
     </form>
   );
 };
