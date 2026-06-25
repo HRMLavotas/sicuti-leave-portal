@@ -53,7 +53,7 @@ const ImportEmployeeDialog = ({ isOpen, onOpenChange }) => {
             Tutup
           </Button>
           <Button
-            onClick={() => window.open("https://sipandai.site/portal", "_blank")}
+            onClick={() => window.open("https://simpel.sipandai.site/portal", "_blank")}
             className="bg-blue-600 hover:bg-blue-500 text-white gap-2"
           >
             <ExternalLink className="w-4 h-4" />

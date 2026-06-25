@@ -33,7 +33,7 @@ validateEnv();
  * Redirect ke SIPANDAI dengan OAuth-style redirect_uri
  */
 export const redirectToSimpelLogin = () => {
-  const portalUrl = import.meta.env.VITE_SIMPEL_APP_URL || "https://sipandai.site";
+  const portalUrl = import.meta.env.VITE_SIMPEL_APP_URL || "https://simpel.sipandai.site";
   const callbackUrl = `${window.location.origin}/auth/callback`;
   window.location.href = `${portalUrl}/auth?redirect=${encodeURIComponent(callbackUrl)}`;
 };

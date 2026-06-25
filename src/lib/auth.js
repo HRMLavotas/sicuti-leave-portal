@@ -94,7 +94,7 @@ export class AuthManager {
     AuditLogger.logLogout(user?.id);
     this.clearSession();
     await supabase.auth.signOut();
-    const portalUrl = import.meta.env.VITE_SIMPEL_APP_URL || "https://sipandai.site";
+    const portalUrl = import.meta.env.VITE_SIMPEL_APP_URL || "https://simpel.sipandai.site";
     window.location.href = `${portalUrl}/portal`;
   }
 
