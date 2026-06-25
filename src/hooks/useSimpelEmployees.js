@@ -72,11 +72,11 @@ export const useSimpelEmployeeData = (
         query = query.or(`name.ilike.%${searchTerm}%,nip.ilike.%${searchTerm}%`);
       }
 
-      // Filters
-      if (selectedDepartment) query = query.eq("department", selectedDepartment);
-      if (selectedPositionType) query = query.eq("position_type", selectedPositionType);
-      if (selectedAsnStatus) query = query.eq("asn_status", selectedAsnStatus);
-      if (selectedRankGroup) query = query.eq("rank_group", selectedRankGroup);
+      // Filters — skip jika nilai "ALL" atau kosong
+      if (selectedDepartment && selectedDepartment !== "ALL") query = query.eq("department", selectedDepartment);
+      if (selectedPositionType && selectedPositionType !== "ALL") query = query.eq("position_type", selectedPositionType);
+      if (selectedAsnStatus && selectedAsnStatus !== "ALL") query = query.eq("asn_status", selectedAsnStatus);
+      if (selectedRankGroup && selectedRankGroup !== "ALL") query = query.eq("rank_group", selectedRankGroup);
 
       // Pagination
       const from = (page - 1) * EMPLOYEES_PER_PAGE;
