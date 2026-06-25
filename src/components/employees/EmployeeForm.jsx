@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -143,7 +143,7 @@ const EmployeeForm = ({
           .from("employees")
           .update(dataToSubmit)
           .eq("id", employee.id)
-      : await supabase.from("employees").insert([dataToSubmit]);
+      : await supabaseSimpelAdmin.from("employees").insert([dataToSubmit]);
 
     setIsSubmitting(false);
 
@@ -353,14 +353,14 @@ const EmployeeForm = ({
           <div className="text-slate-300">
             <strong>Field wajib diisi:</strong>
             <ul className="mt-1 space-y-1 text-slate-400">
-              <li>• Nama Lengkap - Nama lengkap pegawai</li>
-              <li>• Jabatan - Posisi/jabatan pegawai</li>
+              <li>â€¢ Nama Lengkap - Nama lengkap pegawai</li>
+              <li>â€¢ Jabatan - Posisi/jabatan pegawai</li>
               <li>
-                • Jenis Jabatan - Kategori jabatan
+                â€¢ Jenis Jabatan - Kategori jabatan
                 (Struktural/Fungsional/Pelaksana/Outsourcing)
               </li>
-              <li>• Status ASN - Status kepegawaian (PNS/PPPK/Non ASN)</li>
-              <li>• Unit Penempatan - Unit kerja/departemen pegawai</li>
+              <li>â€¢ Status ASN - Status kepegawaian (PNS/PPPK/Non ASN)</li>
+              <li>â€¢ Unit Penempatan - Unit kerja/departemen pegawai</li>
             </ul>
             <p className="mt-2 text-xs text-slate-500">
               Field lain (NIP, Pangkat/Golongan) bersifat opsional dan dapat

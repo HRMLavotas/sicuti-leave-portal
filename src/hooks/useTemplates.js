@@ -1,4 +1,4 @@
-/**
+﻿/**
  * useTemplates - Shared hook untuk memuat template DOCX dari Supabase.
  * Menggunakan module-level cache agar template tidak dimuat ulang
  * setiap kali komponen di-mount.
@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { AuthManager } from "@/lib/auth";
 
-// Module-level cache – bertahan selama sesi browser
+// Module-level cache â€“ bertahan selama sesi browser
 let _cachedTemplates = null;
 let _cacheTimestamp = null;
 let _pendingFetch = null;
@@ -33,7 +33,7 @@ async function fetchTemplatesFromSupabase() {
 
   let query = supabase.from("templates").select("*");
 
-  if (currentUser.role === "master_admin") {
+  if (currentUser.role === "admin_pusat") {
     query = query.eq("template_scope", "global");
   } else if (currentUser.role === "admin_unit") {
     const userUnit = currentUser.unit_kerja || currentUser.unitKerja;

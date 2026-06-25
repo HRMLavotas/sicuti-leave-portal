@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   List,
@@ -98,16 +98,16 @@ const BatchLeaveProposals = () => {
   // Test Supabase connection
   const testSupabaseConnection = async () => {
     try {
-      console.log("🧪 Testing Supabase connection...");
+      console.log("ðŸ§ª Testing Supabase connection...");
       const { data, error } = await supabase.from("leave_requests").select("id").limit(1);
       if (error) {
-        console.error("❌ Supabase connection test failed:", JSON.stringify(error, null, 2));
+        console.error("âŒ Supabase connection test failed:", JSON.stringify(error, null, 2));
         return false;
       }
-      console.log("✅ Supabase connection test successful");
+      console.log("âœ… Supabase connection test successful");
       return true;
     } catch (testError) {
-      console.error("❌ Supabase connection test error:", JSON.stringify(testError, null, 2));
+      console.error("âŒ Supabase connection test error:", JSON.stringify(testError, null, 2));
       return false;
     }
   };
@@ -137,9 +137,10 @@ const BatchLeaveProposals = () => {
   // Pagination for unit proposals
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const isReadOnly = currentUser?.role === "admin_pimpinan";
 
   // Check user permission
-  if (!currentUser || currentUser.role !== 'master_admin') {
+  if (!currentUser || (currentUser.role !== 'admin_pusat' && currentUser.role !== 'admin_pimpinan')) {
     return (
       <div className="p-6">
         <Card className="bg-red-900/20 border-red-700/50">
@@ -160,17 +161,17 @@ const BatchLeaveProposals = () => {
   const fetchBatchProposals = useCallback(async (retryCount = 0) => {
     setIsLoading(true);
     try {
-      console.log("🔍 Fetching leave requests grouped by unit...");
-      console.log("🔍 Current user role:", currentUser?.role);
-      console.log("🔍 Current user unit:", currentUser?.unitKerja);
-      console.log("🔍 Retry attempt:", retryCount);
+      console.log("ðŸ” Fetching leave requests grouped by unit...");
+      console.log("ðŸ” Current user role:", currentUser?.role);
+      console.log("ðŸ” Current user unit:", currentUser?.unitKerja);
+      console.log("ðŸ” Retry attempt:", retryCount);
 
       // Check if we have a valid connection first
       if (!navigator.onLine) {
-        console.log("🚫 Device is offline");
+        console.log("ðŸš« Device is offline");
         setConnectionError(true);
         // Don't throw immediately, try to use cached data instead
-        console.log("📱 Attempting to load cached data...");
+        console.log("ðŸ“± Attempting to load cached data...");
 
         // Try to load cached data immediately when offline
         try {
@@ -181,7 +182,7 @@ const BatchLeaveProposals = () => {
             const maxCacheAge = 1000 * 60 * 60; // 1 hour for offline mode
 
             if (cacheAge < maxCacheAge && userRole === currentUser?.role && data?.length > 0) {
-              console.log("📱 Using cached data (offline mode)");
+              console.log("ðŸ“± Using cached data (offline mode)");
               setUnitProposals(data);
 
               const ageMinutes = Math.round(cacheAge / 1000 / 60);
@@ -196,7 +197,7 @@ const BatchLeaveProposals = () => {
           }
 
           // No usable cached data
-          console.log("⚠️ No usable cached data available for offline mode");
+          console.log("âš ï¸ No usable cached data available for offline mode");
           setUnitProposals([]);
 
           toast({
@@ -208,7 +209,7 @@ const BatchLeaveProposals = () => {
           return; // Exit early, don't attempt network requests
 
         } catch (cacheError) {
-          console.warn("⚠️ Failed to load cached data in offline mode:", cacheError);
+          console.warn("âš ï¸ Failed to load cached data in offline mode:", cacheError);
           // Continue to network attempt even though we're offline (will fail gracefully)
         }
       }
@@ -216,7 +217,7 @@ const BatchLeaveProposals = () => {
       // Skip connectivity test on first attempt to avoid double network calls
       if (retryCount > 0 && navigator.onLine) {
         try {
-          console.log("🔌 Testing basic connectivity...");
+          console.log("ðŸ”Œ Testing basic connectivity...");
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for retry
 
@@ -233,16 +234,16 @@ const BatchLeaveProposals = () => {
           if (!connectivityTest.ok) {
             throw new Error(`Connectivity test failed: ${connectivityTest.status}`);
           }
-          console.log("✅ Basic connectivity OK");
+          console.log("âœ… Basic connectivity OK");
         } catch (connectError) {
-          console.error("❌ Connectivity test failed:", connectError);
+          console.error("âŒ Connectivity test failed:", connectError);
           if (retryCount < 2 && navigator.onLine) {
-            console.log(`🔄 Retrying... Attempt ${retryCount + 1}/3`);
+            console.log(`ðŸ”„ Retrying... Attempt ${retryCount + 1}/3`);
             await new Promise(resolve => setTimeout(resolve, 3000));
             return fetchBatchProposals(retryCount + 1);
           }
           // If offline or max retries reached, proceed to try cached data
-          console.log("⚠️ Connectivity test failed, will try cached data");
+          console.log("âš ï¸ Connectivity test failed, will try cached data");
           setConnectionError(true);
         }
       }
@@ -254,22 +255,22 @@ const BatchLeaveProposals = () => {
       }
 
       // Get leave requests with employee and leave type information
-      console.log("📊 Executing main Supabase query...");
-      console.log("🔍 Environment check:", {
-        supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? "✅ Set" : "❌ Missing",
-        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY ? "✅ Set" : "❌ Missing",
+      console.log("ðŸ“Š Executing main Supabase query...");
+      console.log("ðŸ” Environment check:", {
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL ? "âœ… Set" : "âŒ Missing",
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY ? "âœ… Set" : "âŒ Missing",
         supabaseClientExists: !!supabase,
-        currentUser: currentUser ? `${currentUser.role} - ${currentUser.name}` : "❌ No user"
+        currentUser: currentUser ? `${currentUser.role} - ${currentUser.name}` : "âŒ No user"
       });
 
       const startTime = Date.now();
 
       // Use more reasonable timeouts based on network conditions
       const timeoutMs = retryCount === 0 ? 15000 : 8000; // 15s first try, 8s retries
-      console.log(`⏱️ Setting query timeout to ${timeoutMs / 1000} seconds`);
+      console.log(`â±ï¸ Setting query timeout to ${timeoutMs / 1000} seconds`);
 
       // Fetch leave requests with complete data - only needed columns for performance
-      console.log("🔄 Starting Supabase query execution...");
+      console.log("ðŸ”„ Starting Supabase query execution...");
       const { data: leaveRequests, error: requestsError } = await Promise.race([
         supabase
           .from("leave_requests")
@@ -306,14 +307,14 @@ const BatchLeaveProposals = () => {
         )
       ]);
 
-      console.log("✅ Supabase query completed", { hasData: !!leaveRequests, hasError: !!requestsError });
+      console.log("âœ… Supabase query completed", { hasData: !!leaveRequests, hasError: !!requestsError });
 
       const queryTime = Date.now() - startTime;
-      console.log(`⏱️ Query completed in ${queryTime}ms`);
+      console.log(`â±ï¸ Query completed in ${queryTime}ms`);
 
       if (requestsError) {
-        console.error("❌ Error fetching leave requests:", requestsError);
-        console.error("📊 Error details:", JSON.stringify({
+        console.error("âŒ Error fetching leave requests:", requestsError);
+        console.error("ðŸ“Š Error details:", JSON.stringify({
           code: requestsError.code,
           message: requestsError.message,
           details: requestsError.details,
@@ -344,7 +345,7 @@ const BatchLeaveProposals = () => {
           requestsError.message?.includes("relation") ||
           requestsError.message?.includes("does not exist");
 
-        console.log("🔍 Error classification:", {
+        console.log("ðŸ” Error classification:", {
           isNetworkError,
           isTimeoutError,
           isServerError,
@@ -355,20 +356,20 @@ const BatchLeaveProposals = () => {
         });
 
         if ((isNetworkError || isTimeoutError || isServerError) && retryCount < 2 && navigator.onLine) {
-          console.log(`🔄 Network/timeout/server error detected. Retrying... Attempt ${retryCount + 1}/3`);
+          console.log(`ðŸ”„ Network/timeout/server error detected. Retrying... Attempt ${retryCount + 1}/3`);
           const backoffDelay = Math.min(2000 * Math.pow(2, retryCount), 6000); // Exponential backoff, max 6s
-          console.log(`⏳ Waiting ${backoffDelay}ms before retry...`);
+          console.log(`â³ Waiting ${backoffDelay}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, backoffDelay));
           return fetchBatchProposals(retryCount + 1);
         } else if ((isNetworkError || isTimeoutError) && !navigator.onLine) {
-          console.log("🚫 Device went offline during request, skipping retry");
+          console.log("ðŸš« Device went offline during request, skipping retry");
         }
 
         throw requestsError;
       }
 
-      console.log("📊 Raw leave requests from database:", leaveRequests);
-      console.log("📊 Total leave requests found:", leaveRequests?.length || 0);
+      console.log("ðŸ“Š Raw leave requests from database:", leaveRequests);
+      console.log("ðŸ“Š Total leave requests found:", leaveRequests?.length || 0);
 
       // Group requests by employee department (unit kerja) AND creation date
       const unitDateRequestsMap = {};
@@ -379,7 +380,7 @@ const BatchLeaveProposals = () => {
 
           // Skip requests without department info
           if (!unitName) {
-            console.warn("⚠️ Skipping request without department:", request.id);
+            console.warn("âš ï¸ Skipping request without department:", request.id);
             return;
           }
 
@@ -425,9 +426,9 @@ const BatchLeaveProposals = () => {
         }))
         .sort((a, b) => new Date(b.proposalDate) - new Date(a.proposalDate));
 
-      console.log("📊 Unit-date requests map:", unitDateRequestsMap);
-      console.log("📊 Final grouped requests:", groupedRequests);
-      console.log("✅ Fetched", groupedRequests.length, "unit-date groups with leave requests");
+      console.log("ðŸ“Š Unit-date requests map:", unitDateRequestsMap);
+      console.log("ðŸ“Š Final grouped requests:", groupedRequests);
+      console.log("âœ… Fetched", groupedRequests.length, "unit-date groups with leave requests");
 
       setUnitProposals(groupedRequests);
       setConnectionError(false); // Reset error state on successful fetch
@@ -439,15 +440,15 @@ const BatchLeaveProposals = () => {
           timestamp: Date.now(),
           userRole: currentUser?.role
         }));
-        console.log("💾 Data cached successfully");
+        console.log("ðŸ’¾ Data cached successfully");
       } catch (cacheError) {
-        console.warn("⚠️ Failed to cache data:", cacheError);
+        console.warn("âš ï¸ Failed to cache data:", cacheError);
       }
 
 
     } catch (error) {
-      console.error("❌ Error fetching batch proposals:", error);
-      console.error("🔍 Detailed error analysis:", JSON.stringify({
+      console.error("âŒ Error fetching batch proposals:", error);
+      console.error("ðŸ” Detailed error analysis:", JSON.stringify({
         name: error.name,
         message: error.message,
         code: error.code,
@@ -467,7 +468,7 @@ const BatchLeaveProposals = () => {
           const maxCacheAge = 1000 * 60 * 60; // 1 hour for offline mode
 
           if (cacheAge < maxCacheAge && userRole === currentUser?.role && data?.length > 0) {
-            console.log("📱 Using cached data as fallback");
+            console.log("ðŸ“± Using cached data as fallback");
             setUnitProposals(data);
 
             usedCachedData = true;
@@ -481,7 +482,7 @@ const BatchLeaveProposals = () => {
           }
         }
       } catch (cacheError) {
-        console.warn("⚠️ Failed to load cached data:", cacheError);
+        console.warn("âš ï¸ Failed to load cached data:", cacheError);
       }
 
       if (!usedCachedData) {
@@ -629,7 +630,7 @@ const BatchLeaveProposals = () => {
       });
 
       // Fetch all leave data to ensure completeness
-      console.log("📊 Fetching complete leave data for document generation...");
+      console.log("ðŸ“Š Fetching complete leave data for document generation...");
       const { data: allLeaveData, error: fetchError } = await supabase
         .from("leave_requests")
         .select(`
@@ -659,9 +660,9 @@ const BatchLeaveProposals = () => {
         throw new Error("Gagal mengambil data lengkap cuti: " + fetchError.message);
       }
 
-      console.log("📊 Complete leave data fetched:", allLeaveData?.length || 0, "records");
+      console.log("ðŸ“Š Complete leave data fetched:", allLeaveData?.length || 0, "records");
 
-      // Use complete data for variables — filter to single employee if perorangan mode
+      // Use complete data for variables â€” filter to single employee if perorangan mode
       let completeRequests = allLeaveData || requests;
       if (individualRequestId && individualRequestId !== 'all') {
         completeRequests = completeRequests.filter(r => r.id === individualRequestId);
@@ -828,7 +829,7 @@ const BatchLeaveProposals = () => {
       });
 
       // ===================================================================
-      // BRIDGE MAPPING: Sinkronisasi variabel flat ↔ bertingkat
+      // BRIDGE MAPPING: Sinkronisasi variabel flat â†” bertingkat
       //
       // Tujuan: template yang menggunakan {nama} (individu) akan tetap
       // terisi meski pembuatan surat batch; dan template yang menggunakan
@@ -849,7 +850,7 @@ const BatchLeaveProposals = () => {
         'status_asn', 'nama_atasan', 'nip_atasan', 'jabatan_atasan',
       ];
 
-      // 1. Dari variabel _1 → isi variabel flat (jika flat belum ada atau kosong)
+      // 1. Dari variabel _1 â†’ isi variabel flat (jika flat belum ada atau kosong)
       //    Berguna agar template individu ({nama}) terisi dari data indexed pertama
       EMPLOYEE_VAR_KEYS.forEach((key) => {
         const indexedVal = variables[`${key}_1`];
@@ -860,7 +861,7 @@ const BatchLeaveProposals = () => {
         }
       });
 
-      // 2. Dari variabel flat → isi _1, _2, dst. jika kosong
+      // 2. Dari variabel flat â†’ isi _1, _2, dst. jika kosong
       //    Berguna agar template batch ({nama_1}) terisi dari variabel flat
       //    terutama pada mode individu di mana hanya ada 1 pegawai
       EMPLOYEE_VAR_KEYS.forEach((key) => {
@@ -887,7 +888,7 @@ const BatchLeaveProposals = () => {
         }
       }
 
-      console.log("🔗 Bridge mapping selesai. Contoh variabel individu:");
+      console.log("ðŸ”— Bridge mapping selesai. Contoh variabel individu:");
       console.log("  nama:", variables.nama);
       console.log("  nip:", variables.nip);
       console.log("  jabatan:", variables.jabatan);
@@ -895,7 +896,7 @@ const BatchLeaveProposals = () => {
       console.log("  nip_1:", variables.nip_1);
       console.log("  jabatan_1:", variables.jabatan_1);
 
-      console.log("📄 Generating batch letter with variables:", {
+      console.log("ðŸ“„ Generating batch letter with variables:", {
         leaveType,
         unitName: selectedUnitForBatch.unitName,
         totalRequests: completeRequests.length,
@@ -907,7 +908,7 @@ const BatchLeaveProposals = () => {
       });
 
       // Log the specific variables the user mentioned as missing
-      console.log("🔍 Checking specific variables mentioned by user:");
+      console.log("ðŸ” Checking specific variables mentioned by user:");
       console.log("- unit_kerja:", variables.unit_kerja);
       console.log("- tanggal_pelaksanaan_cuti:", variables.tanggal_pelaksanaan_cuti);
       console.log("- lamanya_cuti:", variables.lamanya_cuti);
@@ -916,19 +917,19 @@ const BatchLeaveProposals = () => {
       console.log("- formulir_pengajuan_cuti:", variables.formulir_pengajuan_cuti);
 
       // Log the NEWLY ADDED variables that were reported missing:
-      console.log("🔧 NEWLY ADDED VARIABLES (user reported as missing):");
+      console.log("ðŸ”§ NEWLY ADDED VARIABLES (user reported as missing):");
       console.log("- tanggal_formulir_pengajuan:", variables.tanggal_formulir_pengajuan);
       console.log("- tanggal_cuti:", variables.tanggal_cuti);
       console.log("- jatah_cuti_tahun:", variables.jatah_cuti_tahun);
 
       // Log all variable keys for debugging
-      console.log("📋 All available variables:", Object.keys(variables).sort());
+      console.log("ðŸ“‹ All available variables:", Object.keys(variables).sort());
 
       // Validate and prepare template content
       // Templates are typically stored as { content: { data: "base64..." } }
       let templateContent = template.content?.data || template.content || template.template_data;
 
-      console.log("📄 Template content structure:", {
+      console.log("ðŸ“„ Template content structure:", {
         hasContent: !!template.content,
         hasContentData: !!template.content?.data,
         hasTemplateData: !!template.template_data,
@@ -943,7 +944,7 @@ const BatchLeaveProposals = () => {
 
       // If content is not a string, convert it
       if (typeof templateContent !== 'string') {
-        console.log("⚠️ Template content is not string, attempting conversion...");
+        console.log("âš ï¸ Template content is not string, attempting conversion...");
 
         // If it's a Buffer or ArrayBuffer, convert to base64
         if (templateContent instanceof ArrayBuffer || templateContent.buffer) {
@@ -963,11 +964,11 @@ const BatchLeaveProposals = () => {
 
       // Ensure it's base64 format
       if (!templateContent.includes(',') && !templateContent.match(/^[A-Za-z0-9+/]*={0,2}$/)) {
-        console.log("⚠️ Content doesn't appear to be base64, wrapping...");
+        console.log("âš ï¸ Content doesn't appear to be base64, wrapping...");
         templateContent = `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${templateContent}`;
       }
 
-      console.log("✅ Template content prepared:", {
+      console.log("âœ… Template content prepared:", {
         type: typeof templateContent,
         length: templateContent.length,
         hasComma: templateContent.includes(','),
@@ -975,9 +976,9 @@ const BatchLeaveProposals = () => {
       });
 
       // Final comprehensive variable logging before processing
-      console.log("🎯 Final variable summary for template processing:");
-      console.log("📊 Total variables:", Object.keys(variables).length);
-      console.log("📝 Variable breakdown:");
+      console.log("ðŸŽ¯ Final variable summary for template processing:");
+      console.log("ðŸ“Š Total variables:", Object.keys(variables).length);
+      console.log("ðŸ“ Variable breakdown:");
 
       // Group variables by category
       const generalVars = Object.keys(variables).filter(key => !key.includes('_') || key.startsWith('unit_') || key.startsWith('jenis_') || key.startsWith('tanggal_') || key.startsWith('nomor_') || key.startsWith('total_') || key.startsWith('jumlah_') || key.startsWith('tahun') || key.startsWith('bulan') || key.startsWith('kota') || key.startsWith('lamanya_') || key.startsWith('cuti_') || key.startsWith('alamat_') || key.startsWith('formulir_') || key.startsWith('departemen') || key.startsWith('instansi'));
@@ -990,7 +991,7 @@ const BatchLeaveProposals = () => {
 
       // Log sample of first employee's data if available
       if (variables.pegawai_list && variables.pegawai_list.length > 0) {
-        console.log("👤 Sample employee data (first record):", variables.pegawai_list[0]);
+        console.log("ðŸ‘¤ Sample employee data (first record):", variables.pegawai_list[0]);
       }
 
       // Process template using existing system
@@ -1023,7 +1024,7 @@ const BatchLeaveProposals = () => {
 
     } catch (error) {
       console.error("Error generating batch letter:", error);
-      console.error("🔍 Document generation error details:", JSON.stringify({
+      console.error("ðŸ” Document generation error details:", JSON.stringify({
         name: error.name,
         message: error.message,
         code: error.code,
@@ -1115,7 +1116,7 @@ const BatchLeaveProposals = () => {
             Kelola pengajuan cuti pegawai yang dikelompokkan berdasarkan unit kerja
           </p>
           <p className="text-blue-400 text-sm">
-            💡 Data diambil dari pengajuan cuti yang dibuat melalui menu "Pengajuan Cuti"
+            ðŸ’¡ Data diambil dari pengajuan cuti yang dibuat melalui menu "Pengajuan Cuti"
           </p>
         </div>
         <div className="flex items-center space-x-3">
@@ -1218,7 +1219,7 @@ const BatchLeaveProposals = () => {
                 </p>
                 <div className="mt-4 p-3 bg-blue-900/20 border border-blue-700/50 rounded-lg max-w-md mx-auto">
                   <p className="text-blue-400 text-sm">
-                    💡 <strong>Panduan:</strong> Admin unit dapat membuat pengajuan cuti di menu "Pengajuan Cuti"
+                    ðŸ’¡ <strong>Panduan:</strong> Admin unit dapat membuat pengajuan cuti di menu "Pengajuan Cuti"
                   </p>
                 </div>
               </div>
@@ -1358,10 +1359,10 @@ const BatchLeaveProposals = () => {
                       </div>
                     </div>
                     <div className="mt-2 text-sm text-slate-300">
-                      📅 {format(new Date(request.start_date), "dd MMM", { locale: id })} - {format(new Date(request.end_date), "dd MMM yyyy", { locale: id })}
+                      ðŸ“… {format(new Date(request.start_date), "dd MMM", { locale: id })} - {format(new Date(request.end_date), "dd MMM yyyy", { locale: id })}
                       {request.reason && (
                         <div className="mt-1 text-slate-400">
-                          💬 {request.reason}
+                          ðŸ’¬ {request.reason}
                         </div>
                       )}
                       <div className="mt-1 text-slate-500 text-xs">
@@ -1412,11 +1413,11 @@ const BatchLeaveProposals = () => {
                   </p>
                 ) : availableTemplates.length === 0 ? (
                   <p className="text-red-400 text-sm mt-2">
-                    ⚠️ Tidak ada template tersedia. Buat template di menu Template Management.
+                    âš ï¸ Tidak ada template tersedia. Buat template di menu Template Management.
                   </p>
                 ) : (
                   <p className="text-green-400 text-sm mt-2">
-                    ✅ {availableTemplates.length} template tersedia
+                    âœ… {availableTemplates.length} template tersedia
                   </p>
                 )}
               </div>
@@ -1457,7 +1458,7 @@ const BatchLeaveProposals = () => {
                       <div>
                         <h3 className="text-white font-medium text-lg">{leaveType}</h3>
                         <p className="text-slate-300 text-sm">
-                          {requests.length} pengajuan cuti • {requests.reduce((sum, req) => sum + (req.days_requested || 0), 0)} hari total
+                          {requests.length} pengajuan cuti â€¢ {requests.reduce((sum, req) => sum + (req.days_requested || 0), 0)} hari total
                         </p>
                       </div>
                       <Button
@@ -1532,7 +1533,7 @@ const BatchLeaveProposals = () => {
                                 <SelectItem key={req.id} value={req.id} className="text-white hover:bg-slate-600 focus:bg-slate-600">
                                   <span className="font-medium">{req.employees?.name || 'Nama tidak diketahui'}</span>
                                   <span className="text-slate-400 ml-2 text-xs">
-                                    {req.employees?.nip} • {req.days_requested} hari
+                                    {req.employees?.nip} â€¢ {req.days_requested} hari
                                   </span>
                                 </SelectItem>
                               ))}
@@ -1540,7 +1541,7 @@ const BatchLeaveProposals = () => {
                           </Select>
                           {effectiveRequests.length > 0 && (
                             <p className="text-purple-400 text-xs mt-1">
-                              ✓ Surat akan dibuat untuk: <strong className="text-white">{effectiveRequests[0]?.employees?.name}</strong>
+                              âœ“ Surat akan dibuat untuk: <strong className="text-white">{effectiveRequests[0]?.employees?.name}</strong>
                             </p>
                           )}
                         </div>
@@ -1548,7 +1549,7 @@ const BatchLeaveProposals = () => {
 
                       {selectedEmpId === 'all' && (
                         <p className="text-blue-400 text-xs mt-1">
-                          ✓ Surat batch akan mencakup <strong className="text-white">{requests.length} pegawai</strong>
+                          âœ“ Surat batch akan mencakup <strong className="text-white">{requests.length} pegawai</strong>
                         </p>
                       )}
                     </div>
@@ -1576,7 +1577,7 @@ const BatchLeaveProposals = () => {
                               )}
                             </div>
                             <div className="text-slate-300">
-                              {request.employees?.nip} • {request.days_requested} hari
+                              {request.employees?.nip} â€¢ {request.days_requested} hari
                             </div>
                             <div className="text-slate-400 text-xs">
                               {format(new Date(request.start_date), "dd MMM", { locale: id })} -

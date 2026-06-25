@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   History,
@@ -622,16 +622,16 @@ const LeaveHistoryPage = () => {
 
   const handleFeatureClick = (feature) => {
     toast({
-      title: `🚀 ${feature}`,
+      title: `ðŸš€ ${feature}`,
       description:
-        "�� Fitur ini belum diimplementasikan—tapi jangan khawatir! Anda bisa memintanya di prompt berikutnya! 🚀",
+        "ï¿½ï¿½ Fitur ini belum diimplementasikanâ€”tapi jangan khawatir! Anda bisa memintanya di prompt berikutnya! ðŸš€",
     });
   };
 
   const handleExportDataCuti = async () => {
     try {
       toast({
-        title: "📊 Export Data Cuti",
+        title: "ðŸ“Š Export Data Cuti",
         description: "Sedang mempersiapkan data untuk export...",
       });
 
@@ -685,8 +685,8 @@ const LeaveHistoryPage = () => {
 
       if (leaveBalancesError) throw leaveBalancesError;
 
-      console.log("📋 Leave balances data:", leaveBalances);
-      console.log("📊 Total leave balances:", leaveBalances?.length || 0);
+      console.log("ðŸ“‹ Leave balances data:", leaveBalances);
+      console.log("ðŸ“Š Total leave balances:", leaveBalances?.length || 0);
 
       // Filter leaveBalances hanya untuk Cuti Tahunan
       const cutiTahunanBalances =
@@ -807,21 +807,21 @@ const LeaveHistoryPage = () => {
         leaveBalances: saldoCutiTahunanFiltered,
       };
 
-      console.log("📦 Final export data:", exportData);
+      console.log("ðŸ“¦ Final export data:", exportData);
 
       const fileName = `Data_Cuti_${new Date().toISOString().split("T")[0]}.xlsx`;
 
       await exportToExcelWithMultipleSheets(exportData, fileName);
 
       toast({
-        title: "✅ Export Berhasil",
+        title: "âœ… Export Berhasil",
         description: `Data cuti berhasil diekspor ke file ${fileName}`,
       });
     } catch (error) {
       console.error("Export error:", error);
       toast({
         variant: "destructive",
-        title: "❌ Export Gagal",
+        title: "âŒ Export Gagal",
         description: error.message || "Gagal mengekspor data cuti",
       });
     }
@@ -926,7 +926,7 @@ const LeaveHistoryPage = () => {
                 sistem: {overallTotalEmployees}.
               </p>
               <div className="mt-2 p-2 bg-green-900/20 border border-green-600/30 rounded text-xs text-green-300">
-                ✅ <strong>Fitur Aktif:</strong> Pemisahan saldo tahun berjalan
+                âœ… <strong>Fitur Aktif:</strong> Pemisahan saldo tahun berjalan
                 vs penangguhan berdasarkan pilihan "Jatah Cuti Tahun" pada form
                 pengajuan cuti. Migration database berhasil!
               </div>

@@ -1,4 +1,4 @@
-import { AuthManager } from "@/lib/auth";
+﻿import { AuthManager } from "@/lib/auth";
 
 /**
  * Debug helper to log current user session data
@@ -6,25 +6,25 @@ import { AuthManager } from "@/lib/auth";
 export const debugUserSession = () => {
   const user = AuthManager.getUserSession();
   
-  console.log("🔍 =================================");
-  console.log("🔍 DEBUG USER SESSION DATA:");
-  console.log("🔍 =================================");
-  console.log("🔍 Raw user object:", user);
-  console.log("🔍 User ID:", user?.id);
-  console.log("🔍 User name:", user?.name);
-  console.log("🔍 User role:", user?.role);
-  console.log("🔍 User unit_kerja:", user?.unit_kerja);
-  console.log("🔍 User unitKerja:", user?.unitKerja);
-  console.log("🔍 User permissions:", user?.permissions);
-  console.log("🔍 User status:", user?.status);
-  console.log("🔍 =================================");
+  console.log("ðŸ” =================================");
+  console.log("ðŸ” DEBUG USER SESSION DATA:");
+  console.log("ðŸ” =================================");
+  console.log("ðŸ” Raw user object:", user);
+  console.log("ðŸ” User ID:", user?.id);
+  console.log("ðŸ” User name:", user?.name);
+  console.log("ðŸ” User role:", user?.role);
+  console.log("ðŸ” User unit_kerja:", user?.unit_kerja);
+  console.log("ðŸ” User unitKerja:", user?.unitKerja);
+  console.log("ðŸ” User permissions:", user?.permissions);
+  console.log("ðŸ” User status:", user?.status);
+  console.log("ðŸ” =================================");
   
   // Test role checks
-  console.log("🔍 Role checks:");
-  console.log("🔍 - Is admin_unit:", user?.role === 'admin_unit');
-  console.log("🔍 - Is master_admin:", user?.role === 'master_admin');
-  console.log("🔍 - Has unit data:", !!(user?.unit_kerja || user?.unitKerja));
-  console.log("🔍 =================================");
+  console.log("ðŸ” Role checks:");
+  console.log("ðŸ” - Is admin_unit:", user?.role === 'admin_unit');
+  console.log("ðŸ” - Is master_admin:", user?.role === 'admin_pusat');
+  console.log("ðŸ” - Has unit data:", !!(user?.unit_kerja || user?.unitKerja));
+  console.log("ðŸ” =================================");
   
   return user;
 };

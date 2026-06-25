@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Plus,
@@ -35,7 +35,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/lib/supabaseClient";
+import { useSimpelUsers } from "@/hooks/useSimpelUsers";
 import bcrypt from "bcryptjs";
 import AutocompleteInput from "@/components/ui/AutocompleteInput";
 import { useDepartments } from "@/hooks/useDepartments";
@@ -44,9 +44,9 @@ import { useDepartments } from "@/hooks/useDepartments";
 const PermissionInfo = ({ role }) => {
   const getPermissionInfo = (role) => {
     switch (role) {
-      case "master_admin":
+      case "admin_pusat":
         return {
-          title: "Master Admin",
+          title: "Admin Pusat",
           description: "Full system access - can manage all users, data, and settings",
           permissions: [
             "Dashboard access",
@@ -139,9 +139,7 @@ const UserManagement = () => {
     setFilteredUsers(mappedUsers);
   };
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  // Users loaded automatically by useSimpelUsers hook
 
   useEffect(() => {
     let filtered = users;
@@ -167,8 +165,10 @@ const UserManagement = () => {
   const handleAddUser = async (userData) => {
     // Set permissions based on role
     let permissions = [];
-    if (userData.role === "master_admin") {
+    if (userData.role === "admin_pusat") {
       permissions = ["all"];
+    } else if (userData.role === "admin_pimpinan") {
+      permissions = ["all_readonly"];
     } else if (userData.role === "admin_unit") {
       permissions = ["dashboard", "employees_unit", "leave_requests_unit", "leave_history_unit", "surat_keterangan_unit"];
     } else {
@@ -178,56 +178,7 @@ const UserManagement = () => {
     // Hash password sebelum simpan
     const hashedPassword = await bcrypt.hash(userData.password, 10);
 
-    const { error } = await supabase.from("users").insert([
-      {
-        name: userData.name,
-        username: userData.username,
-        password: hashedPassword,
-        email: userData.email,
-        role: userData.role,
-        unit_kerja: userData.unitKerja,
-        status: "active",
-        permissions,
-        last_login: null,
-      },
-    ]);
-    if (error) {
-      toast({ title: "Error", description: "Gagal menambah user: " + error.message });
-      return;
-    }
-    setIsAddDialogOpen(false);
-    toast({ title: "Success", description: "User added successfully" });
-    fetchUsers();
-  };
-
-  const handleEditUser = async (userData) => {
-    // Set permissions based on role
-    let permissions = [];
-    if (userData.role === "master_admin") {
-      permissions = ["all"];
-    } else if (userData.role === "admin_unit") {
-      permissions = ["dashboard", "employees_unit", "leave_requests_unit", "leave_history_unit", "surat_keterangan_unit"];
-    } else {
-      permissions = ["dashboard"];
-    }
-
-    let updateData = {
-      name: userData.name,
-      username: userData.username,
-      email: userData.email,
-      role: userData.role,
-      unit_kerja: userData.unitKerja,
-      status: userData.status,
-      permissions,
-    };
-    // Jika password diisi, hash dan update
-    if (userData.password) {
-      updateData.password = await bcrypt.hash(userData.password, 10);
-    }
-
-    const { error } = await supabase
-      .from("users")
-      .update(updateData)
+    await updateUser(editingUser.id, updateData)
       .eq("id", selectedUser.id);
     if (error) {
       toast({ title: "Error", description: "Gagal update user: " + error.message });
@@ -251,7 +202,7 @@ const UserManagement = () => {
 
   const getRoleBadge = (role) => {
     const roleConfig = {
-      master_admin: { color: "bg-purple-100 text-purple-800", label: "Master Admin" },
+      admin_pusat: { color: "bg-purple-100 text-purple-800", label: "Admin Pusat" },
       admin_unit: { color: "bg-blue-100 text-blue-800", label: "Admin Unit" },
       employee: { color: "bg-green-100 text-green-800", label: "Employee" },
     };
@@ -339,7 +290,7 @@ const UserManagement = () => {
           </SelectTrigger>
           <SelectContent className="bg-slate-800 border-slate-700">
             <SelectItem value="all" className="text-white hover:bg-slate-700">All Roles</SelectItem>
-            <SelectItem value="master_admin" className="text-white hover:bg-slate-700">Master Admin</SelectItem>
+            <SelectItem value="admin_pusat" className="text-white hover:bg-slate-700">Master Admin</SelectItem>
             <SelectItem value="admin_unit" className="text-white hover:bg-slate-700">Admin Unit</SelectItem>
             <SelectItem value="employee" className="text-white hover:bg-slate-700">Employee</SelectItem>
           </SelectContent>
@@ -387,7 +338,7 @@ const UserManagement = () => {
               <div>
                 <p className="text-sm font-medium text-slate-400">Master Admins</p>
                 <p className="text-2xl font-bold text-white">
-                  {users.filter((user) => user.role === "master_admin").length}
+                  {users.filter((user) => user.role === "admin_pusat").length}
                 </p>
               </div>
               <div className="w-12 h-12 bg-purple-500/20 rounded-lg flex items-center justify-center">
@@ -613,7 +564,7 @@ const AddUserDialog = ({ onAdd }) => {
             <SelectContent className="bg-slate-700 border-slate-600">
               <SelectItem value="employee" className="text-white hover:bg-slate-600">Employee</SelectItem>
               <SelectItem value="admin_unit" className="text-white hover:bg-slate-600">Admin Unit Kerja</SelectItem>
-              <SelectItem value="master_admin" className="text-white hover:bg-slate-600">Master Admin</SelectItem>
+              <SelectItem value="admin_pusat" className="text-white hover:bg-slate-600">Master Admin</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -716,7 +667,7 @@ const EditUserDialog = ({ user, onEdit, onClose }) => {
           <SelectContent className="bg-slate-700 border-slate-600">
             <SelectItem value="employee" className="text-white hover:bg-slate-600">Employee</SelectItem>
             <SelectItem value="admin_unit" className="text-white hover:bg-slate-600">Admin Unit Kerja</SelectItem>
-            <SelectItem value="master_admin" className="text-white hover:bg-slate-600">Master Admin</SelectItem>
+            <SelectItem value="admin_pusat" className="text-white hover:bg-slate-600">Master Admin</SelectItem>
           </SelectContent>
         </Select>
       </div>

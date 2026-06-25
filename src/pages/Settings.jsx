@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Settings as SettingsIcon,
@@ -103,7 +103,7 @@ const Settings = () => {
       localStorage.setItem("appSettings", JSON.stringify(settings));
 
       toast({
-        title: "✅ Pengaturan Disimpan",
+        title: "âœ… Pengaturan Disimpan",
         description: "Pengaturan sistem berhasil disimpan dan akan diterapkan.",
       });
     } catch (error) {
@@ -138,7 +138,7 @@ const Settings = () => {
     localStorage.removeItem("appSettings");
 
     toast({
-      title: "🔄 Pengaturan Direset",
+      title: "ðŸ”„ Pengaturan Direset",
       description: "Semua pengaturan telah dikembalikan ke nilai default.",
     });
   };
@@ -160,7 +160,7 @@ const Settings = () => {
       await createExcelTemplate(templateData, "Template_Data_Pegawai.xlsx", "Template Data Pegawai");
       
       toast({
-        title: "📥 Template Berhasil Diunduh",
+        title: "ðŸ“¥ Template Berhasil Diunduh",
         description:
           "File template Excel telah diunduh. Silakan isi data sesuai format yang disediakan.",
       });
@@ -204,7 +204,7 @@ const Settings = () => {
 
       if (allEmployees.length === 0) {
         toast({
-          title: "⚠️ Tidak Ada Data",
+          title: "âš ï¸ Tidak Ada Data",
           description: "Tidak ada data pegawai untuk diekspor.",
         });
         return;
@@ -225,7 +225,7 @@ const Settings = () => {
       await exportToExcel(exportData, fileName, "Data Pegawai");
 
       toast({
-        title: "📤 Export Berhasil",
+        title: "ðŸ“¤ Export Berhasil",
         description: `Data ${allEmployees.length} pegawai berhasil diekspor ke file ${fileName}.`,
       });
     } catch (error) {
@@ -292,7 +292,7 @@ const Settings = () => {
 
       if (allLeaveHistory.length === 0) {
         toast({
-          title: "⚠️ Tidak Ada Data",
+          title: "âš ï¸ Tidak Ada Data",
           description: "Tidak ada riwayat cuti untuk diekspor.",
         });
         return;
@@ -320,7 +320,7 @@ const Settings = () => {
       await exportToExcel(exportData, fileName, "Riwayat Cuti");
 
       toast({
-        title: "📤 Export Berhasil",
+        title: "ðŸ“¤ Export Berhasil",
         description: `Data ${allLeaveHistory.length} riwayat cuti berhasil diekspor ke file ${fileName}.`,
       });
     } catch (error) {
@@ -484,7 +484,7 @@ const Settings = () => {
         (backupData.leave_requests?.length || 0);
 
       toast({
-        title: "💾 Backup Berhasil",
+        title: "ðŸ’¾ Backup Berhasil",
         description: `Database berhasil dibackup dengan ${totalRecords} total record ke file ${fileName}.`,
       });
     } catch (error) {
@@ -520,7 +520,7 @@ const Settings = () => {
         if (jsonData.length === 0) {
           toast({
             variant: "destructive",
-            title: "❌ File Kosong",
+            title: "âŒ File Kosong",
             description:
               "File Excel tidak berisi data atau format tidak sesuai.",
           });
@@ -528,13 +528,13 @@ const Settings = () => {
         }
 
         toast({
-          title: "📥 Import Berhasil",
+          title: "ðŸ“¥ Import Berhasil",
           description: `Berhasil membaca ${jsonData.length} baris data. Fitur import otomatis akan segera tersedia.`,
         });
       } catch (error) {
         toast({
           variant: "destructive",
-          title: "❌ Error Import",
+          title: "âŒ Error Import",
           description:
             "Gagal membaca file Excel. Pastikan format file sesuai template.",
         });

@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient";
+﻿import { supabase } from "./supabaseClient";
 import bcrypt from "bcryptjs";
 import { RateLimiter } from "./rateLimiter";
 import { AuditLogger, AUDIT_EVENTS } from "./auditLogger";
@@ -43,7 +43,7 @@ export class AuthManager {
 
       // DEBUG: Log user session data in development
       if (import.meta.env.DEV && Math.random() < 0.1) { // Log 10% of the time to avoid spam
-        console.log("🔍 AuthManager.getUserSession():", {
+        console.log("ðŸ” AuthManager.getUserSession():", {
           id: parsedUser.id,
           name: parsedUser.name,
           role: parsedUser.role,
@@ -71,7 +71,11 @@ export class AuthManager {
     return this.getUserSession() !== null;
   }
 
+  // DEPRECATED: Login via username/password tidak dipakai lagi
+  // Auth sepenuhnya via SSO dari SIMPEL
   static async login(username, password) {
+    throw new Error("Login via username/password sudah tidak didukung. Gunakan SSO melalui Portal SIPANDAI.");
+    /* Original login code disabled
     if (!username || !password) {
       throw new Error("Username dan password wajib diisi");
     }
@@ -161,6 +165,9 @@ export class AuthManager {
     }
   }
 
+      */ // End of disabled login code
+  }
+
   static logout() {
     const user = this.getUserSession();
     AuditLogger.logLogout(user?.id);
@@ -171,11 +178,7 @@ export class AuthManager {
     const user = this.getUserSession();
     if (!user) return false;
 
-    const roleHierarchy = {
-      employee: 1,
-      admin_unit: 2,
-      master_admin: 3,
-    };
+    const roleHierarchy = { employee: 1, admin_unit: 2, admin_pimpinan: 3, admin_pusat: 4 };
 
     const userLevel = roleHierarchy[user.role] || 0;
     const requiredLevel = roleHierarchy[requiredRole] || 999;
@@ -188,7 +191,7 @@ export class AuthManager {
     if (!user) return false;
 
     // Master admin can access everything
-    if (user.role === "master_admin") return true;
+    if (user.role === "admin_pusat" || user.role === "admin_pimpinan") return true;
 
     // Admin unit can only access their own unit
     if (user.role === "admin_unit") {
@@ -206,7 +209,7 @@ export class AuthManager {
     if (!user) return false;
 
     // Both master_admin and admin_unit can access template management
-    return user.role === "master_admin" || user.role === "admin_unit";
+    return user.role === "admin_pusat" || user.role === "admin_unit";
   }
 
   // NEW: Check if user can access letter creation features
@@ -215,7 +218,7 @@ export class AuthManager {
     if (!user) return false;
 
     // Both master_admin and admin_unit can access letter creation
-    return user.role === "master_admin" || user.role === "admin_unit";
+    return user.role === "admin_pusat" || user.role === "admin_unit";
   }
 
   // NEW: Get template scope for current user
@@ -223,7 +226,7 @@ export class AuthManager {
     const user = this.getUserSession();
     if (!user) return null;
 
-    if (user.role === "master_admin") {
+    if (user.role === "admin_pusat" || user.role === "admin_pimpinan") {
       return "global"; // Can access all templates
     } else if (user.role === "admin_unit") {
       return "unit"; // Can only access their own unit's templates

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+﻿import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { AuthManager } from "@/lib/auth";
@@ -137,7 +137,7 @@ export const useLeaveProposals = () => {
         throw new Error("User not authenticated");
       }
 
-      if (currentUser.role !== 'master_admin' && currentUser.role !== 'admin_unit') {
+      if (currentUser.role !== 'admin_pusat' && currentUser.role !== 'admin_unit') {
         throw new Error("Only master admin and admin unit can update proposal status");
       }
 

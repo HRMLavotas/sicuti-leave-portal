@@ -1,11 +1,38 @@
 ﻿import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabaseAuth, supabaseData, supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
+import { CalendarCheck, Loader2, AlertCircle } from "lucide-react";
+
+/**
+ * AuthCallback — penerima token SSO dari SIMPEL.
+ * 
+ * Strategi baru (no DB query):
+ * - Decode JWT lokal → dapat user_id, email, nama, role, department
+ * - Simpan langsung ke AuthManager (localStorage)
+ * - TIDAK ADA insert/update ke database SiCuti
+ * - User data sepenuhnya dari SIMPEL
+ */
+
+function decodeJwt(token) {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(window.atob(base64));
+  } catch {
+    return null;
+  }
+}
+
+function getPermissionsForRole(role) {
+  if (role === "admin_pusat")    return ["all"];
+  if (role === "admin_pimpinan") return ["all_readonly"];
+  if (role === "admin_unit")     return ["dashboard", "employees_unit", "leave_requests_unit", "leave_history_unit", "surat_keterangan_unit"];
+  return ["leave_requests_self", "leave_history_self"];
+}
 
 const AuthCallback = () => {
   const navigate = useNavigate();
-  const [statusMsg, setStatusMsg] = useState("Mengautentikasi...");
+  const [statusMsg, setStatusMsg] = useState("Memverifikasi token...");
   const [errorMsg, setErrorMsg] = useState(null);
 
   useEffect(() => {
@@ -15,180 +42,69 @@ const AuthCallback = () => {
       const refresh_token = params.get("refresh_token");
 
       if (!access_token || !refresh_token) {
-        console.warn("[SSO] Tidak ada token, redirect ke landing");
-        navigate("/", { replace: true });
+        console.warn("[SSO] Token tidak ditemukan");
+        window.location.replace("https://sipandai.site/portal");
         return;
       }
 
-      try {
-        setStatusMsg("Memverifikasi token...");
-        let sessionUser = null;
+      window.history.replaceState({}, document.title, "/auth/callback");
 
-        const { data: sessionData, error: sessionError } = await supabaseAuth.auth.setSession({
-          access_token,
-          refresh_token,
-        });
+      // Decode JWT
+      setStatusMsg("Memverifikasi identitas...");
+      const payload = decodeJwt(access_token);
 
-        if (sessionError) {
-          console.warn("[SSO] setSession gagal, decode JWT fallback:", sessionError.message);
-          try {
-            const base64Url = access_token.split(".")[1];
-            const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-            const payload = JSON.parse(window.atob(base64));
-            sessionUser = { id: payload.sub, email: payload.email, user_metadata: payload.user_metadata || {} };
-            console.log("[SSO] JWT decode fallback berhasil:", sessionUser.email);
-          } catch (decodeErr) {
-            console.error("[SSO] JWT decode fallback gagal:", decodeErr);
-            setErrorMsg("Token SSO tidak valid. Silakan login ulang melalui SIPANDAI.");
-            return;
-          }
-        } else {
-          sessionUser = sessionData.user;
-          console.log("[SSO] setSession berhasil:", sessionUser?.email);
-        }
+      if (!payload || !payload.sub || !payload.email) {
+        setErrorMsg("Token SSO tidak valid. Silakan login ulang melalui SIPANDAI.");
+        return;
+      }
 
-        if (!sessionUser?.email) {
-          setErrorMsg("Data pengguna tidak ditemukan dalam token. Silakan login ulang.");
-          return;
-        }
+      // Cek expired
+      if (payload.exp && Date.now() / 1000 > payload.exp) {
+        setErrorMsg("Sesi sudah kadaluarsa. Silakan login ulang melalui SIPANDAI.");
+        return;
+      }
 
-        window.history.replaceState({}, document.title, "/auth/callback");
+      const meta = payload.user_metadata || {};
+      const user = {
+        id: payload.sub,                        // UUID auth dari SIMPEL
+        email: payload.email,
+        name: meta.full_name || payload.email,
+        role: meta.role || "employee",          // Role langsung dari SIMPEL
+        department: meta.department || "Belum Ditetapkan",
+        nip: meta.nip || null,
+        permissions: getPermissionsForRole(meta.role || "employee"),
+        last_login: new Date().toISOString(),
+      };
 
-        setStatusMsg("Mengambil data profil...");
-        let profile = null;
-        let userRole = "employee";
-        let userNip = null;
+      console.log("[SSO] Login berhasil:", user.email, "| Role:", user.role);
 
-        const { data: profileData } = await supabaseSimpelAdmin
-          .from("profiles")
-          .select("*")
-          .or("email.eq." + sessionUser.email + ",id.eq." + sessionUser.id)
-          .maybeSingle();
-        profile = profileData;
+      // Simpan ke localStorage saja (tidak ke DB)
+      AuthManager.setUserSession(user);
+      
+      setStatusMsg("Berhasil! Mengalihkan...");
 
-        const { data: roleData } = await supabaseSimpelAdmin
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", sessionUser.id)
-          .maybeSingle();
-
-        const simpelRole = roleData?.role || sessionUser.user_metadata?.role;
-        if (simpelRole === "admin_pusat" || simpelRole === "admin_pimpinan" || simpelRole === "admin_super") {
-          userRole = "master_admin";
-        } else if (simpelRole === "admin_unit") {
-          userRole = "admin_unit";
-        }
-        console.log("[SSO] Role:", simpelRole, "->", userRole);
-
-        if (profile?.nip) {
-          userNip = profile.nip;
-        } else {
-          const emailPrefix = sessionUser.email.split("@")[0];
-          if (/^\d+$/.test(emailPrefix)) userNip = emailPrefix;
-        }
-
-        let permissions = [];
-        if (userRole === "master_admin") {
-          permissions = ["all"];
-        } else if (userRole === "admin_unit") {
-          permissions = ["dashboard", "employees_unit", "leave_requests_unit", "leave_history_unit", "surat_keterangan_unit"];
-        } else {
-          permissions = ["leave_requests_self", "leave_history_self"];
-        }
-
-        setStatusMsg("Menyinkronkan data pengguna...");
-        const usernamePrefix = sessionUser.email.split("@")[0];
-
-        const { data: localUser, error: localUserError } = await supabaseData
-          .from("users")
-          .select("*")
-          .or("email.eq." + sessionUser.email + ",username.eq." + usernamePrefix)
-          .maybeSingle();
-
-        if (localUserError) {
-          console.error("[SSO] Gagal query user SiCuti:", localUserError.message);
-          setErrorMsg("Gagal menyinkronkan data (" + localUserError.message + "). Hubungi administrator.");
-          return;
-        }
-
-        let finalUser = localUser;
-
-        if (!localUser) {
-          console.log("[SSO] Auto-provisioning user baru:", sessionUser.email);
-          const { data: createdUser, error: createErr } = await supabaseData
-            .from("users")
-            .insert([{
-              name: profile?.full_name || sessionUser.email,
-              username: usernamePrefix,
-              password: "sso_managed_login",
-              email: sessionUser.email,
-              role: userRole,
-              unit_kerja: profile?.department || null,
-              nip: userNip,
-              status: "active",
-              permissions,
-              last_login: new Date().toISOString(),
-            }])
-            .select()
-            .single();
-
-          if (createErr) {
-            console.error("[SSO] Auto-provisioning gagal:", createErr.message);
-            setErrorMsg("Gagal mendaftarkan pengguna (" + createErr.message + "). Hubungi administrator.");
-            return;
-          }
-          finalUser = createdUser;
-          console.log("[SSO] Auto-provisioning berhasil:", finalUser.email);
-        } else {
-          const updates = {};
-          let needsUpdate = false;
-          if (localUser.role !== userRole) { updates.role = userRole; updates.permissions = permissions; needsUpdate = true; }
-          if (!localUser.nip && userNip) { updates.nip = userNip; needsUpdate = true; }
-          if (profile?.department && localUser.unit_kerja !== profile.department) { updates.unit_kerja = profile.department; needsUpdate = true; }
-
-          if (needsUpdate) {
-            updates.last_login = new Date().toISOString();
-            const { data: updated } = await supabaseData.from("users").update(updates).eq("id", localUser.id).select().single();
-            if (updated) finalUser = updated;
-          } else {
-            await supabaseData.from("users").update({ last_login: new Date().toISOString() }).eq("id", localUser.id);
-          }
-        }
-
-        const mappedUser = { ...finalUser, unitKerja: finalUser.unit_kerja || finalUser.unitKerja };
-        AuthManager.setUserSession(mappedUser);
-        console.log("[SSO] Login sukses:", mappedUser.name, "| Role:", mappedUser.role);
-        setStatusMsg("Berhasil! Mengalihkan...");
-
-        if (mappedUser.role === "employee") {
-          navigate("/leave-requests", { replace: true });
-        } else {
-          navigate("/employees", { replace: true });
-        }
-      } catch (err) {
-        console.error("[SSO] Error tidak terduga:", err);
-        setErrorMsg("Terjadi kesalahan: " + (err.message || String(err)) + ". Silakan coba lagi.");
+      // Redirect berdasarkan role
+      if (user.role === "employee") {
+        navigate("/leave-requests", { replace: true });
+      } else {
+        navigate("/employees", { replace: true });
       }
     };
 
     handleCallback();
   }, [navigate]);
 
-  const simpelPortalUrl = "https://sipandai.site/portal";
-
   if (errorMsg) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
         <div className="bg-slate-800 border border-red-500/30 rounded-2xl p-8 max-w-md w-full text-center space-y-4">
           <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto">
-            <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 100 18A9 9 0 0012 3z" />
-            </svg>
+            <AlertCircle className="w-6 h-6 text-red-400" />
           </div>
           <h2 className="text-white font-semibold text-lg">Login SSO Gagal</h2>
           <p className="text-slate-400 text-sm leading-relaxed">{errorMsg}</p>
           <a
-            href={simpelPortalUrl}
+            href="https://sipandai.site/portal"
             className="inline-flex items-center justify-center gap-2 w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 text-sm font-semibold transition-colors"
           >
             Kembali ke Portal SIPANDAI

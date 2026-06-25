@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -290,7 +290,7 @@ const LeaveRequestForm = ({
           });
         } else {
           setHasNewColumns(true);
-          console.log("✅ Migration verified - new columns available");
+          console.log("âœ… Migration verified - new columns available");
         }
       } catch (error) {
         console.error("Migration check error:", error);
@@ -532,7 +532,7 @@ const LeaveRequestForm = ({
         if (actualOverlaps.length > 0) {
           const conflict = actualOverlaps[0]; // Just take first conflict
           setOverlapWarning(
-            `⚠️ Peringatan: Terdapat pengajuan cuti lain (${conflict.leave_types?.name}) pada tanggal yang beririsan: ${conflict.start_date} s.d. ${conflict.end_date}`
+            `âš ï¸ Peringatan: Terdapat pengajuan cuti lain (${conflict.leave_types?.name}) pada tanggal yang beririsan: ${conflict.start_date} s.d. ${conflict.end_date}`
           );
         } else {
           setOverlapWarning("");
@@ -606,7 +606,7 @@ const LeaveRequestForm = ({
     setEditingEmployee(null);
 
     toast({
-      title: "✅ Data Pegawai Diperbarui",
+      title: "âœ… Data Pegawai Diperbarui",
       description: "Data pegawai berhasil diperbarui dan form cuti telah di-refresh.",
     });
   };
@@ -837,7 +837,7 @@ const LeaveRequestForm = ({
           : "";
 
       toast({
-        title: `✅ Data Cuti ${initialData?.id ? "Diperbarui" : "Ditambahkan"}`,
+        title: `âœ… Data Cuti ${initialData?.id ? "Diperbarui" : "Ditambahkan"}`,
         description: `Data cuti berhasil ${initialData?.id ? "diperbarui" : "ditambahkan"}${quotaYearInfo}.`,
       });
       onSubmitSuccess();
@@ -845,7 +845,7 @@ const LeaveRequestForm = ({
       console.error("Error submitting leave request:", error);
       toast({
         variant: "destructive",
-        title: `❌ Gagal ${initialData?.id ? "Memperbarui" : "Menambahkan"} Data`,
+        title: `âŒ Gagal ${initialData?.id ? "Memperbarui" : "Menambahkan"} Data`,
         description: error.message,
       });
     } finally {
@@ -1163,7 +1163,7 @@ const LeaveRequestForm = ({
         {/* Overlap Warning Message */}
         {overlapWarning && (
           <div className="p-3 bg-red-900/40 border border-red-500/50 rounded text-red-300 text-sm flex items-center animate-in fade-in slide-in-from-top-1">
-            <span className="mr-2">⚠️</span>
+            <span className="mr-2">âš ï¸</span>
             {overlapWarning}
           </div>
         )}
@@ -1220,7 +1220,7 @@ const LeaveRequestForm = ({
               </Select>
               <div className="mt-2 p-2 rounded border border-slate-600/50 bg-slate-800/30">
                 <p className="text-xs text-slate-400">
-                  💡 Periode menentukan tahun cuti yang sedang Anda input.
+                  ðŸ’¡ Periode menentukan tahun cuti yang sedang Anda input.
                   Pilih <strong className="text-slate-300">2025</strong> untuk input data cuti periode 2025,
                   atau <strong className="text-slate-300">2026</strong> untuk periode 2026.
                 </p>
@@ -1292,7 +1292,7 @@ const LeaveRequestForm = ({
                 <div className="mt-2 p-2 rounded border">
                   {parseInt(formData.leave_quota_year) < currentYear ? (
                     <div className="text-xs text-yellow-400 bg-yellow-900/20 p-2 rounded">
-                      ⚠️ <strong>Saldo Cuti Penangguhan</strong>
+                      âš ï¸ <strong>Saldo Cuti Penangguhan</strong>
                       <br />
                       Menggunakan saldo cuti yang ditangguhkan dari tahun{" "}
                       {formData.leave_quota_year}. Pastikan pegawai memiliki
@@ -1300,7 +1300,7 @@ const LeaveRequestForm = ({
                     </div>
                   ) : (
                     <div className="text-xs text-green-400 bg-green-900/20 p-2 rounded">
-                      ✓ <strong>Saldo Cuti Tahun Berjalan</strong>
+                      âœ“ <strong>Saldo Cuti Tahun Berjalan</strong>
                       <br />
                       Menggunakan saldo cuti normal tahun{" "}
                       {formData.leave_quota_year}.

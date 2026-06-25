@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 import { PerformanceMonitor } from "./performance";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -42,11 +42,11 @@ export class DatabaseOptimizer {
     const cached = this.queryCache.get(key);
 
     if (cached && Date.now() - cached.timestamp < ttl) {
-      console.log(`📋 Cache hit for: ${key}`);
+      console.log(`ðŸ“‹ Cache hit for: ${key}`);
       return cached.data;
     }
 
-    console.log(`🔄 Cache miss for: ${key}`);
+    console.log(`ðŸ”„ Cache miss for: ${key}`);
     const startTime = Date.now();
 
     try {
@@ -61,11 +61,11 @@ export class DatabaseOptimizer {
       });
 
       console.log(
-        `💾 Cached query result for: ${key} (${Date.now() - startTime}ms)`,
+        `ðŸ’¾ Cached query result for: ${key} (${Date.now() - startTime}ms)`,
       );
       return result;
     } catch (error) {
-      console.error(`❌ Query failed for: ${key}`, error);
+      console.error(`âŒ Query failed for: ${key}`, error);
       throw error;
     }
   }
@@ -116,7 +116,7 @@ export class DatabaseOptimizer {
     }
 
     if (removed > 0) {
-      console.log(`🧹 Cleaned up ${removed} expired cache entries`);
+      console.log(`ðŸ§¹ Cleaned up ${removed} expired cache entries`);
     }
   }
 }
@@ -194,7 +194,7 @@ export const OptimizedQueries = {
     return DatabaseOptimizer.cachedQuery(
       cacheKey,
       async () => {
-        let query = supabase.from("employees").select("*", { count: "exact" });
+        let query = supabaseSimpelAdmin.from("employees").select("*", { count: "exact" });
 
         // Add search filter
         if (search) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+﻿import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   FileText,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import { getSimpelEmployees } from "@/hooks/useSimpelEmployees";
 import LeaveRequestForm from "@/components/leave_requests/LeaveRequestForm";
 import LeaveRequestCard from "@/components/leave_requests/LeaveRequestCard";
 import { Combobox } from "@/components/ui/combobox";
@@ -77,7 +78,7 @@ const LeaveRequests = () => {
       const currentUser = AuthManager.getUserSession();
 
       // DEBUG: Log user session for leave requests
-      console.log("🔍 DEBUG LeaveRequests - User session:", {
+      console.log("ðŸ” DEBUG LeaveRequests - User session:", {
         role: currentUser?.role,
         unit_kerja: currentUser?.unit_kerja,
         unitKerja: currentUser?.unitKerja,
@@ -90,7 +91,7 @@ const LeaveRequests = () => {
 
       // Employee role: hanya bisa melihat data cuti mereka sendiri berdasarkan NIP
       if (currentUser && currentUser.role === 'employee' && currentUser.nip) {
-        console.log("🔍 DEBUG LeaveRequests - Employee filtering by NIP:", currentUser.nip);
+        console.log("ðŸ” DEBUG LeaveRequests - Employee filtering by NIP:", currentUser.nip);
 
         const { data: selfEmployee, error: selfError } = await supabase
           .from("employees")
@@ -111,7 +112,7 @@ const LeaveRequests = () => {
           employeeIdsFilter = [];
         }
       } else if (currentUser && currentUser.role === 'admin_unit' && userUnit) {
-        console.log("🔍 DEBUG LeaveRequests - Getting employees from unit:", userUnit);
+        console.log("ðŸ” DEBUG LeaveRequests - Getting employees from unit:", userUnit);
 
         // First get employee IDs from the user's unit
         const { data: unitEmployees, error: empError } = await supabase
@@ -123,7 +124,7 @@ const LeaveRequests = () => {
           console.error("Error fetching unit employees:", empError);
         } else {
           employeeIdsFilter = unitEmployees.map(emp => emp.id);
-          console.log("🔍 DEBUG LeaveRequests - Employee IDs in unit:", employeeIdsFilter.length);
+          console.log("ðŸ” DEBUG LeaveRequests - Employee IDs in unit:", employeeIdsFilter.length);
 
           if (employeeIdsFilter.length > 0) {
             countQuery = countQuery.in("employee_id", employeeIdsFilter);
@@ -185,7 +186,7 @@ const LeaveRequests = () => {
             dataQuery = dataQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000");
           }
         } else if (currentUser.role === 'admin_unit') {
-          console.log("🔍 DEBUG LeaveRequests - Applying employee IDs filter to data query:", employeeIdsFilter.length);
+          console.log("ðŸ” DEBUG LeaveRequests - Applying employee IDs filter to data query:", employeeIdsFilter.length);
           if (employeeIdsFilter.length > 0) {
             dataQuery = dataQuery.in("employee_id", employeeIdsFilter);
           } else {
@@ -309,12 +310,11 @@ const LeaveRequests = () => {
 
   const fetchDropdownData = useCallback(async () => {
     try {
-      const { data: employeesData, error: employeesError } = await supabase
-        .from("employees")
-        .select("id, name, nip")
-        .order("name", { ascending: true });
-      if (employeesError) throw employeesError;
-      setEmployees(employeesData);
+      // Query employees dari SIMPEL langsung
+        const employeesData = await getSimpelEmployees(
+          currentUser?.role === "admin_unit" ? currentUser?.department : null
+        );
+        setEmployees(employeesData);
       // Leave types and departments are fetched by their respective hooks
     } catch (error) {
       console.error("Error fetching dropdown data:", error);
@@ -397,7 +397,7 @@ const LeaveRequests = () => {
         console.error(`Gagal mengembalikan saldo cuti:`, rpcError.message);
 
       toast({
-        title: "��� Data Dihapus",
+        title: "ï¿½ï¿½ï¿½ Data Dihapus",
         description: "Data cuti berhasil dihapus dan saldo telah dikembalikan.",
       });
       fetchLeaveRequests();
@@ -405,7 +405,7 @@ const LeaveRequests = () => {
       console.error("Error deleting request:", error);
       toast({
         variant: "destructive",
-        title: "❌ Gagal Menghapus",
+        title: "âŒ Gagal Menghapus",
         description: error.message,
       });
     } finally {
@@ -416,6 +416,8 @@ const LeaveRequests = () => {
   // Check if current user is employee
   const currentUser = AuthManager.getUserSession();
   const isEmployee = currentUser?.role === 'employee';
+  const isReadOnly  = currentUser?.role === "admin_pimpinan";
+  const canEditReq  = !isEmployee && !isReadOnly;
 
   const leaveTypeOptions = [
     { value: "", label: "Semua Jenis Cuti" },
@@ -645,8 +647,8 @@ const LeaveRequests = () => {
                     key={request.id}
                     request={request}
                     index={index}
-                    onEdit={!isEmployee ? handleEditRequest : undefined}
-                    onDelete={!isEmployee ? handleDeleteRequest : undefined}
+                    onEdit={canEditReq ? handleEditRequest : undefined}
+                    onDelete={canEditReq ? handleDeleteRequest : undefined}
                   />
                 ))}
 

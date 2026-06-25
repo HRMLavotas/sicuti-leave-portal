@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   FileText,
@@ -99,7 +99,7 @@ const TemplateManagement = () => {
         let query = supabase.from("templates").select("*");
 
         // Apply role-based filtering
-        if (currentUser.role === "master_admin") {
+        if (currentUser.role === "admin_pusat") {
           // Master admin sees only global templates
           query = query.eq("template_scope", "global");
         } else if (currentUser.role === "admin_unit") {
@@ -278,7 +278,7 @@ const TemplateManagement = () => {
         if (!unitScope) {
           throw new Error("Admin unit user must have a unit assigned");
         }
-      } else if (currentUser.role === "master_admin") {
+      } else if (currentUser.role === "admin_pusat") {
         templateScope = "global";
         unitScope = null;
       } else {
@@ -397,7 +397,7 @@ const TemplateManagement = () => {
         if (templateToDelete.template_scope !== "unit" || templateToDelete.unit_scope !== userUnit) {
           throw new Error("You can only delete templates from your own unit");
         }
-      } else if (currentUser.role === "master_admin") {
+      } else if (currentUser.role === "admin_pusat") {
         // Master admin can only delete global templates
         if (templateToDelete.template_scope !== "global") {
           throw new Error("Master admin can only delete global templates");
@@ -460,7 +460,7 @@ const TemplateManagement = () => {
           <div className="mt-2">
             {(() => {
               const currentUser = AuthManager.getUserSession();
-              if (currentUser?.role === "master_admin") {
+              if (currentUser?.role === "admin_pusat") {
                 return (
                   <div className="flex items-center gap-2 text-sm">
                     <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
@@ -641,15 +641,15 @@ const TemplateManagement = () => {
                   <p className="font-medium mb-1">Tips untuk Template PDF:</p>
                   <ul className="space-y-1 text-blue-200">
                     <li>
-                      • Buat form fields dengan nama yang sesuai dengan data di
+                      â€¢ Buat form fields dengan nama yang sesuai dengan data di
                       atas
                     </li>
                     <li>
-                      • Gunakan Adobe Acrobat atau LibreOffice untuk membuat
+                      â€¢ Gunakan Adobe Acrobat atau LibreOffice untuk membuat
                       form fields
                     </li>
                     <li>
-                      • Nama field harus persis sama atau mirip dengan nama data
+                      â€¢ Nama field harus persis sama atau mirip dengan nama data
                     </li>
                   </ul>
                 </div>
@@ -836,7 +836,7 @@ const TemplateManagement = () => {
                           <div className="grid grid-cols-2 gap-4 text-xs">
                             <div>
                               <span className="text-green-600 font-medium">
-                                ✓ Cocok:{" "}
+                                âœ“ Cocok:{" "}
                                 {
                                   selectedTemplateFields.filter((field) =>
                                     Object.keys(availableDataFields).some(
@@ -856,7 +856,7 @@ const TemplateManagement = () => {
                             </div>
                             <div>
                               <span className="text-yellow-600 font-medium">
-                                ⚠ Perlu Review:{" "}
+                                âš  Perlu Review:{" "}
                                 {
                                   selectedTemplateFields.filter(
                                     (field) =>
@@ -971,7 +971,7 @@ const TemplateManagement = () => {
                               </p>
                               <ol className="list-decimal list-inside space-y-1 ml-2">
                                 <li>Buka PDF di Adobe Acrobat Pro</li>
-                                <li>Pilih Tools → Prepare Form</li>
+                                <li>Pilih Tools â†’ Prepare Form</li>
                                 <li>
                                   Klik "Start" untuk deteksi otomatis atau
                                   tambah manual
@@ -991,14 +991,14 @@ const TemplateManagement = () => {
                               <ol className="list-decimal list-inside space-y-1 ml-2">
                                 <li>Buat dokumen di LibreOffice Writer</li>
                                 <li>
-                                  Insert → Form → Text Box untuk setiap field
+                                  Insert â†’ Form â†’ Text Box untuk setiap field
                                 </li>
-                                <li>Klik kanan field → Control Properties</li>
+                                <li>Klik kanan field â†’ Control Properties</li>
                                 <li>
                                   Set "Name" sesuai data (contoh: "nama", "nip")
                                 </li>
                                 <li>
-                                  Export as PDF → centang "Create PDF form"
+                                  Export as PDF â†’ centang "Create PDF form"
                                 </li>
                               </ol>
                             </div>

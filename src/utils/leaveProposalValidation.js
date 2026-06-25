@@ -1,4 +1,4 @@
-import { differenceInDays, isValid, parseISO } from "date-fns";
+﻿import { differenceInDays, isValid, parseISO } from "date-fns";
 
 /**
  * Validate leave proposal data
@@ -198,14 +198,14 @@ export const validateUserPermissions = (user, action, proposal = null) => {
         if (!proposal || proposal.proposer_unit !== user.unitKerja) {
           errors.push("Anda hanya dapat melihat usulan dari unit kerja sendiri");
         }
-      } else if (user.role !== 'master_admin') {
+      } else if (user.role !== 'admin_pusat') {
         errors.push("Anda tidak memiliki akses untuk melihat usulan");
       }
       break;
 
     case 'approve_proposal':
     case 'reject_proposal':
-      if (user.role !== 'master_admin') {
+      if (user.role !== 'admin_pusat') {
         errors.push("Hanya master admin yang dapat menyetujui/menolak usulan");
       }
       if (proposal && proposal.status !== 'pending') {
@@ -214,7 +214,7 @@ export const validateUserPermissions = (user, action, proposal = null) => {
       break;
 
     case 'generate_letter':
-      if (user.role !== 'master_admin') {
+      if (user.role !== 'admin_pusat') {
         errors.push("Hanya master admin yang dapat membuat surat usulan");
       }
       if (proposal && proposal.status !== 'approved' && proposal.status !== 'processed') {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -41,7 +41,7 @@ const menuItems = [
 ];
 
 const getMenuItemsByPermissions = (permissions = [], user) => {
-  if (permissions.includes("all")) return menuItems;
+  if (permissions.includes("all") || permissions.includes("all_readonly")) return menuItems;
   return menuItems.filter((item) => {
     if (item.label === "Dashboard" && permissions.includes("dashboard"))
       return true;
@@ -77,7 +77,7 @@ const getMenuItemsByPermissions = (permissions = [], user) => {
     if (
       item.type === "group" &&
       item.label === "Surat Keterangan" &&
-      (permissions.includes("surat_keterangan") || permissions.includes("surat_keterangan_unit") || permissions.includes("all") || user?.role === "admin_unit" || user?.role === "master_admin")
+      (permissions.includes("surat_keterangan") || permissions.includes("surat_keterangan_unit") || permissions.includes("all") || user?.role === "admin_unit" || user?.role === "admin_pusat")
     )
       return true;
     return false;
@@ -85,7 +85,7 @@ const getMenuItemsByPermissions = (permissions = [], user) => {
 };
 
 const ROLE_LABELS = {
-  master_admin: "Master Admin",
+  admin_pusat: "Admin Pusat",
   admin_unit: "Admin Unit",
   employee: "Pegawai",
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   FileText,
@@ -177,7 +177,7 @@ function DocxSuratKeterangan() {
         let query = supabase.from("templates").select("*");
 
         // Apply role-based filtering
-        if (currentUser.role === "master_admin") {
+        if (currentUser.role === "admin_pusat") {
           // Master admin sees only global templates
           query = query.eq("template_scope", "global");
         } else if (currentUser.role === "admin_unit") {
@@ -316,13 +316,13 @@ function DocxSuratKeterangan() {
         setHolidays(allHolidays);
 
         console.log(
-          `📅 Loaded ${allHolidays.size} national holidays for years ${yearsToLoad.join(', ')}`,
+          `ðŸ“… Loaded ${allHolidays.size} national holidays for years ${yearsToLoad.join(', ')}`,
           Array.from(allHolidays),
         );
 
         if (allHolidays.size > 0) {
           toast({
-            title: "📅 Hari Libur Nasional Dimuat",
+            title: "ðŸ“… Hari Libur Nasional Dimuat",
             description: `${allHolidays.size} hari libur nasional telah dimuat untuk perhitungan yang akurat`,
             variant: "default",
           });
@@ -1039,7 +1039,7 @@ function DocxSuratKeterangan() {
         batchData[`tempat_lahir_${index}`] = employeeData.tempat_lahir || "Tempat lahir tidak tersedia";
         batchData[`tanggal_lahir_${index}`] = employeeData.tanggal_lahir || "Tanggal lahir tidak tersedia";
 
-        console.log(`✓ Employee ${index} data filled successfully`);
+        console.log(`âœ“ Employee ${index} data filled successfully`);
       } else {
         // No employee for this slot, fill with empty strings
         console.log(
@@ -1070,7 +1070,7 @@ function DocxSuratKeterangan() {
     }
 
     // ===================================================================
-    // BRIDGE MAPPING: Sinkronisasi variabel flat ↔ bertingkat
+    // BRIDGE MAPPING: Sinkronisasi variabel flat â†” bertingkat
     //
     // Tujuan: template yang menggunakan {nama} (individu) akan tetap
     // terisi meski pembuatan surat batch; dan template yang menggunakan
@@ -1092,7 +1092,7 @@ function DocxSuratKeterangan() {
       'status_asn', 'nama_atasan', 'nip_atasan', 'jabatan_atasan',
     ];
 
-    // 1. Dari variabel _1 → isi variabel flat (jika flat belum ada atau kosong)
+    // 1. Dari variabel _1 â†’ isi variabel flat (jika flat belum ada atau kosong)
     EMPLOYEE_VAR_KEYS.forEach((key) => {
       const indexedVal = batchData[`${key}_1`];
       if (indexedVal !== undefined && indexedVal !== null) {
@@ -1102,7 +1102,7 @@ function DocxSuratKeterangan() {
       }
     });
 
-    // 2. Dari variabel flat → isi _1, _2, dst. jika kosong
+    // 2. Dari variabel flat â†’ isi _1, _2, dst. jika kosong
     EMPLOYEE_VAR_KEYS.forEach((key) => {
       const flatVal = batchData[key];
       if (flatVal !== undefined && flatVal !== null) {
@@ -1125,7 +1125,7 @@ function DocxSuratKeterangan() {
       }
     }
 
-    console.log("🔗 Bridge mapping selesai. Contoh variabel:");
+    console.log("ðŸ”— Bridge mapping selesai. Contoh variabel:");
     console.log("  nama:", batchData.nama);
     console.log("  nip:", batchData.nip);
     console.log("  jabatan:", batchData.jabatan);
@@ -1409,14 +1409,14 @@ function DocxSuratKeterangan() {
             <div
               className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${holidays.size > 0 ? "bg-green-500/20 text-green-400" : "bg-yellow-500/20 text-yellow-400"}`}
             >
-              📅 Hari Libur:{" "}
+              ðŸ“… Hari Libur:{" "}
               {holidays.size > 0
                 ? `${holidays.size} hari dimuat`
                 : "Belum dimuat"}
             </div>
             {(() => {
               const currentUser = AuthManager.getUserSession();
-              if (currentUser?.role === "master_admin") {
+              if (currentUser?.role === "admin_pusat") {
                 return (
                   <div className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-purple-500/20 text-purple-400">
                     <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
@@ -1609,7 +1609,7 @@ function DocxSuratKeterangan() {
                   <div className="p-3 bg-purple-900/30 border border-purple-700/50 rounded-lg">
                     <div className="flex items-start space-x-2">
                       <div className="text-sm text-purple-300">
-                        <p className="font-medium mb-1">✓ Support Variabel Berjenjang</p>
+                        <p className="font-medium mb-1">âœ“ Support Variabel Berjenjang</p>
                         <p className="text-xs text-purple-200">
                           Sistem juga mendukung template batch dengan variabel flat ({"{"}nama{"}"}).
                           Atau gunakan format berjenjang ({"{"}nama_1{"}"}, {"{"}nama_2{"}"}...) untuk hasil maksimal.
@@ -1634,13 +1634,13 @@ function DocxSuratKeterangan() {
                 <div className="space-y-3">
                   <div className="p-3 bg-blue-900/30 border border-blue-700/50 rounded-lg">
                     <div className="text-sm text-blue-300">
-                      <p className="font-medium mb-1">✓ Mendukung Dua Format Variabel</p>
+                      <p className="font-medium mb-1">âœ“ Mendukung Dua Format Variabel</p>
                       <p className="text-xs text-blue-200 mb-2">
                         Template individu Anda dapat menggunakan:
                       </p>
                       <ul className="space-y-1 text-xs text-blue-200">
-                        <li>• <strong>Flat:</strong> {"{"}nama{"}"}, {"{"}nip{"}"}, {"{"}jabatan{"}"}</li>
-                        <li>• <strong>Berjenjang:</strong> {"{"}nama_1{"}"}, {"{"}nip_1{"}"}, {"{"}jabatan_1{"}"}</li>
+                        <li>â€¢ <strong>Flat:</strong> {"{"}nama{"}"}, {"{"}nip{"}"}, {"{"}jabatan{"}"}</li>
+                        <li>â€¢ <strong>Berjenjang:</strong> {"{"}nama_1{"}"}, {"{"}nip_1{"}"}, {"{"}jabatan_1{"}"}</li>
                       </ul>
                       <p className="text-xs text-blue-200 mt-2">
                         Sistem secara otomatis akan mengisi kedua format untuk kompatibilitas maksimal.
@@ -1720,19 +1720,19 @@ function DocxSuratKeterangan() {
                             </p>
                             <ul className="space-y-1 text-blue-200">
                               <li>
-                                • Template harus menggunakan variabel berindeks
+                                â€¢ Template harus menggunakan variabel berindeks
                                 seperti {"{"}nama_1{"}"}, {"{"}nama_2{"}"}, dst.
                               </li>
                               <li>
-                                • Sistem akan mengisi data pegawai sesuai urutan
+                                â€¢ Sistem akan mengisi data pegawai sesuai urutan
                                 yang dipilih
                               </li>
                               <li>
-                                • Maksimal 45 pegawai dapat digabung dalam satu
+                                â€¢ Maksimal 45 pegawai dapat digabung dalam satu
                                 template (atau sesuai jumlah variabel di template)
                               </li>
                               <li>
-                                • Variabel kosong akan dibiarkan kosong jika
+                                â€¢ Variabel kosong akan dibiarkan kosong jika
                                 pegawai kurang dari jumlah slot template
                               </li>
                             </ul>

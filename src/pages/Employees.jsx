@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Search,
@@ -46,7 +46,7 @@ const Employees = () => {
     asnStatuses,
     rankGroups,
     refreshData
-  } = useEmployeeData(
+  } = useSimpelEmployeeData(
     debouncedSearchTerm,
     selectedUnitPenempatan,
     selectedPositionType,
@@ -58,12 +58,12 @@ const Employees = () => {
   const [isSyncing, setIsSyncing] = useState(false);
 
   const currentUser = AuthManager.getUserSession();
-  const isMasterAdmin = currentUser?.role === 'master_admin';
+  const isMasterAdmin = currentUser?.role === 'admin_pusat';
 
   const handleSyncFromSimpel = async () => {
     setIsSyncing(true);
     toast({
-      title: "⏳ Memulai Sinkronisasi...",
+      title: "â³ Memulai Sinkronisasi...",
       description: "Menghubungkan ke database SIMPEL untuk mengambil data pegawai.",
     });
 
@@ -94,7 +94,7 @@ const Employees = () => {
       if (allSimpelEmployees.length === 0) {
         toast({
           variant: "destructive",
-          title: "❌ Gagal Sinkronisasi",
+          title: "âŒ Gagal Sinkronisasi",
           description: "Tidak ada data pegawai yang ditemukan di aplikasi SIMPEL.",
         });
         setIsSyncing(false);
@@ -102,7 +102,7 @@ const Employees = () => {
       }
 
       toast({
-        title: "🔄 Memproses Data...",
+        title: "ðŸ”„ Memproses Data...",
         description: `Ditemukan ${allSimpelEmployees.length} pegawai dari SIMPEL. Memulai deduplikasi & upsert.`,
       });
 
@@ -136,7 +136,7 @@ const Employees = () => {
 
       console.log(`[Sync] Total SIMPEL: ${allSimpelEmployees.length}, Unik NIP: ${nipMap.size}, Duplikat: ${duplicateCount}, Tanpa NIP: ${skippedNoNip}`);
 
-      // 3. Format data sesuai kolom SiCuti — JANGAN salin 'id' dari SIMPEL!
+      // 3. Format data sesuai kolom SiCuti â€” JANGAN salin 'id' dari SIMPEL!
       //    Biarkan SiCuti menggunakan ID-nya sendiri. NIP adalah penghubung utama.
       const formattedEmployees = Array.from(nipMap.values()).map(emp => ({
         nip: String(emp.nip).trim(),
@@ -184,7 +184,7 @@ const Employees = () => {
         // Progress toast setiap 5 chunk
         if ((i / chunkSize) % 5 === 4) {
           toast({
-            title: "🔄 Progres Sinkronisasi...",
+            title: "ðŸ”„ Progres Sinkronisasi...",
             description: `${successCount} dari ${formattedEmployees.length} pegawai telah diproses.`,
           });
         }
@@ -194,7 +194,7 @@ const Employees = () => {
 
       // 5. Inisialisasi saldo cuti tahun berjalan
       toast({
-        title: "🔄 Menginisialisasi Saldo Cuti...",
+        title: "ðŸ”„ Menginisialisasi Saldo Cuti...",
         description: "Menyiapkan kuota saldo cuti tahun berjalan untuk pegawai baru.",
       });
 
@@ -206,13 +206,13 @@ const Employees = () => {
       // 6. Tampilkan hasil akhir
       if (errorCount === 0) {
         toast({
-          title: "✅ Sinkronisasi Berhasil",
+          title: "âœ… Sinkronisasi Berhasil",
           description: `${successCount} pegawai berhasil disinkronkan dari SIMPEL ke SiCuti.${duplicateCount > 0 ? ` (${duplicateCount} NIP duplikat di-skip)` : ''}${skippedNoNip > 0 ? ` (${skippedNoNip} tanpa NIP di-skip)` : ''}`,
         });
       } else {
         toast({
           variant: "destructive",
-          title: "⚠️ Sinkronisasi Sebagian",
+          title: "âš ï¸ Sinkronisasi Sebagian",
           description: `${successCount} sukses, ${errorCount} gagal. Error: ${errorDetails[0]}`,
         });
       }
@@ -222,7 +222,7 @@ const Employees = () => {
       console.error("[Sync] Fatal error:", error);
       toast({
         variant: "destructive",
-        title: "❌ Gagal Sinkronisasi",
+        title: "âŒ Gagal Sinkronisasi",
         description: error.message || "Terjadi kesalahan saat menyinkronkan data pegawai.",
       });
     } finally {
@@ -267,7 +267,7 @@ const Employees = () => {
   const handleExportData = async () => {
     try {
       toast({
-        title: "⏳ Sedang Mengunduh...",
+        title: "â³ Sedang Mengunduh...",
         description: "Mohon tunggu, sedang menyiapkan file Excel.",
       });
 
@@ -319,7 +319,7 @@ const Employees = () => {
       if (!data || data.length === 0) {
         toast({
           variant: "destructive",
-          title: "❌ Data Kosong",
+          title: "âŒ Data Kosong",
           description: "Tidak ada data pegawai yang sesuai untuk diexport.",
         });
         return;
@@ -329,7 +329,7 @@ const Employees = () => {
       await exportEmployeesToExcel(data, `Data_Pegawai_${dateStr}.xlsx`);
 
       toast({
-        title: "✅ Export Berhasil",
+        title: "âœ… Export Berhasil",
         description: "File Excel data pegawai berhasil diunduh.",
       });
 
@@ -337,7 +337,7 @@ const Employees = () => {
       console.error("Export error:", error);
       toast({
         variant: "destructive",
-        title: "❌ Gagal Export",
+        title: "âŒ Gagal Export",
         description: "Terjadi kesalahan saat mengunduh data pegawai.",
       });
     }
@@ -356,14 +356,14 @@ const Employees = () => {
       >
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Data Pegawai</h1>
-          <p className="text-slate-300">Data {overallTotalEmployeeCount} pegawai — tersinkronisasi otomatis dari SIMPEL</p>
+          <p className="text-slate-300">Data {overallTotalEmployeeCount} pegawai â€” tersinkronisasi otomatis dari SIMPEL</p>
           <div className="flex items-center gap-2 mt-2 px-3 py-1.5 bg-blue-500/10 border border-blue-500/20 rounded-lg w-fit">
             <Info className="w-4 h-4 text-blue-400 flex-shrink-0" />
             <span className="text-xs text-blue-300">Data pegawai bersifat <strong>read-only</strong>. Untuk menambah atau mengubah data, silakan gunakan aplikasi <strong>SIMPEL</strong>.</span>
           </div>
         </div>
         <div className="flex space-x-2 mt-4 sm:mt-0">
-          {isMasterAdmin && (
+          {canEditData && (
             <Button 
               onClick={handleSyncFromSimpel} 
               disabled={isSyncing}

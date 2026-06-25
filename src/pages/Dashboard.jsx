@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, OptimizedQueries } from "@/lib/supabaseOptimized";
 import {
   Loader2,
@@ -96,7 +96,7 @@ const Dashboard = () => {
       console.log("Fetching stats for department:", selectedUnit);
 
       // Build base employee query
-      let employeeQuery = supabase.from("employees").select("*");
+      let employeeQuery = supabaseSimpelAdmin.from("employees").select("*");
 
       // Apply department filter if selected
       if (selectedUnit && selectedUnit.trim() !== "") {

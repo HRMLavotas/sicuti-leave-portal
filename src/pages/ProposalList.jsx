@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { 
   List, 
@@ -58,7 +58,7 @@ const ProposalList = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   // Check user permission
-  if (!currentUser || currentUser.role !== 'master_admin') {
+  if (!currentUser || currentUser.role !== 'admin_pusat') {
     return (
       <div className="p-6">
         <Card className="bg-red-900/20 border-red-700/50">
@@ -645,10 +645,10 @@ const ProposalList = () => {
                             </div>
                           </div>
                           <div className="mt-2 text-sm text-slate-300">
-                            📅 {format(new Date(item.start_date), "dd MMM", { locale: id })} - {format(new Date(item.end_date), "dd MMM yyyy", { locale: id })}
+                            ðŸ“… {format(new Date(item.start_date), "dd MMM", { locale: id })} - {format(new Date(item.end_date), "dd MMM yyyy", { locale: id })}
                             {item.reason && (
                               <div className="mt-1 text-slate-400">
-                                💬 {item.reason}
+                                ðŸ’¬ {item.reason}
                               </div>
                             )}
                           </div>
