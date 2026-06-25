@@ -18,6 +18,7 @@ import { AuthManager } from "@/lib/auth";
 import { supabase } from "@/lib/supabaseClient";
 import useLeaveProposals from "@/hooks/useLeaveProposals";
 import LeaveProposalForm from "@/components/leave_proposals/LeaveProposalForm";
+import EmployeeLeaveRequestForm from "@/components/leave_proposals/EmployeeLeaveRequestForm";
 import { downloadLeaveProposalLetter } from "@/utils/leaveProposalLetterGenerator";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
@@ -144,8 +145,10 @@ const LeaveProposals = () => {
         end_date: emp.end_date,
         days_requested: emp.days_requested,
         leave_quota_year: emp.leave_quota_year,
+        leave_period: emp.leave_period || emp.leave_quota_year,
         reason: emp.reason || "",
         address_during_leave: emp.address_during_leave || "",
+        application_form_date: emp.application_form_date || null,
         status: "proposed",
       }));
 
@@ -257,7 +260,30 @@ const LeaveProposals = () => {
   if (showCreateForm) {
     return (
       <div className="p-6">
-        <LeaveProposalForm onSubmit={handleCreateProposal} onCancel={() => setShowCreateForm(false)} />
+        {isEmployee ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="text-slate-400 hover:text-white text-sm flex items-center gap-1"
+              >
+                ← Kembali
+              </button>
+              <h2 className="text-xl font-bold text-white">Form Pengajuan Cuti</h2>
+            </div>
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-6">
+              <EmployeeLeaveRequestForm
+                onSubmit={handleCreateProposal}
+                onCancel={() => setShowCreateForm(false)}
+              />
+            </div>
+          </div>
+        ) : (
+          <LeaveProposalForm
+            onSubmit={handleCreateProposal}
+            onCancel={() => setShowCreateForm(false)}
+          />
+        )}
       </div>
     );
   }

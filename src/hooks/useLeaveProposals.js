@@ -192,9 +192,10 @@ export const useLeaveProposals = () => {
           days_requested: item.days_requested,
           reason: item.reason || "",
           leave_quota_year: item.leave_quota_year,
-          leave_period: item.leave_quota_year, // default period
+          leave_period: item.leave_period || item.leave_quota_year,
           submitted_date: new Date().toISOString(),
           address_during_leave: item.address_during_leave || "",
+          application_form_date: item.application_form_date || null,
           signed_by: approvalData.signed_by,
           leave_letter_number: approvalData.letter_number,
           leave_letter_date: approvalData.letter_date,
