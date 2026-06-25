@@ -1,17 +1,13 @@
 ﻿import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Plus,
   Search,
   Edit,
   Trash2,
   UserPlus,
   Shield,
   Mail,
-  Phone,
   Calendar,
-  Filter,
-  MoreVertical,
   Users,
   UserCheck,
 } from "lucide-react";
@@ -33,10 +29,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { useSimpelUsers } from "@/hooks/useSimpelUsers";
-import bcrypt from "bcryptjs";
 import AutocompleteInput from "@/components/ui/AutocompleteInput";
 import { useDepartments } from "@/hooks/useDepartments";
 
@@ -109,7 +103,6 @@ const PermissionInfo = ({ role }) => {
 };
 
 const UserManagement = () => {
-  const [users, setUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -118,23 +111,9 @@ const UserManagement = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const { toast } = useToast();
   const { departments, isLoadingDepartments } = useDepartments();
-
-  // Fetch users from Supabase
-  const fetchUsers = async () => {
-    const { data, error } = await supabase.from("users").select("*");
-    if (error) {
-      toast({ title: "Error", description: "Gagal mengambil data user dari database." });
-      return;
-    }
-
-      ...user,
-
-
-    setUsers(data || []);
-    setFilteredUsers(mappedUsers);
-  };
-
-  // Users loaded automatically by useSimpelUsers hook
+  
+  // Use SIMPEL users hook
+  const { users, isLoading, updateUser, createUser, deleteUser } = useSimpelUsers();
 
   useEffect(() => {
     let filtered = users;
@@ -143,9 +122,9 @@ const UserManagement = () => {
     if (searchTerm) {
       filtered = filtered.filter(
         (user) =>
-          user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          user.department.toLowerCase().includes(searchTerm.toLowerCase())
+          user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (user.unit_kerja || "").toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -170,29 +149,36 @@ const UserManagement = () => {
       permissions = ["dashboard"];
     }
 
-    // Hash password sebelum simpan
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
-
-    await updateUser(editingUser.id, updateData)
-      .eq("id", selectedUser.id);
-    if (error) {
-      toast({ title: "Error", description: "Gagal update user: " + error.message });
-      return;
+    try {
+      await createUser({ ...userData, permissions });
+      setIsAddDialogOpen(false);
+      toast({ title: "Success", description: "User added successfully" });
+    } catch {
+      // error already shown by hook
     }
-    setIsEditDialogOpen(false);
-    setSelectedUser(null);
-    toast({ title: "Success", description: "User updated successfully" });
-    fetchUsers();
+  };
+
+  const handleEditUser = async (userData) => {
+    if (!selectedUser) return;
+    try {
+      await updateUser(selectedUser.id, {
+        name: userData.name,
+        unit_kerja: userData.department,
+        role: userData.role,
+      });
+      setIsEditDialogOpen(false);
+      setSelectedUser(null);
+    } catch {
+      // error already shown by hook
+    }
   };
 
   const handleDeleteUser = async (userId) => {
-    const { error } = await supabase.from("users").delete().eq("id", userId);
-    if (error) {
-      toast({ title: "Error", description: "Gagal menghapus user: " + error.message });
-      return;
+    try {
+      await deleteUser(userId);
+    } catch {
+      // error already shown by hook
     }
-    toast({ title: "Success", description: "User deleted successfully" });
-    fetchUsers();
   };
 
   const getRoleBadge = (role) => {
@@ -401,7 +387,7 @@ const UserManagement = () => {
                       </td>
                       <td className="py-4 px-4 text-white">{user.username}</td>
                       <td className="py-4 px-4">{getRoleBadge(user.role)}</td>
-                      <td className="py-4 px-4 text-white">{user.department}</td>
+                      <td className="py-4 px-4 text-white">{user.unit_kerja}</td>
                       <td className="py-4 px-4">{getStatusBadge(user.status)}</td>
                       <td className="py-4 px-4">
                         <div className="flex flex-wrap gap-1">
