@@ -14,7 +14,6 @@ import {
   Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { signOut } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 
@@ -122,9 +121,9 @@ const Sidebar = ({ isOpen, setIsOpen, isMobile }) => {
     return () => window.removeEventListener("storage", handleStorageChange);
   }, []);
 
-  const handleLogout = async () => {
-    AuthManager.clearSession();
-    await signOut();
+  const handleLogout = () => {
+    AuthManager.logout();
+    window.location.href = '/';
   };
 
   const handleItemClick = () => {
