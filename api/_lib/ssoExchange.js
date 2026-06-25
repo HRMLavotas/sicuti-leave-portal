@@ -131,10 +131,15 @@ async function provisionSicutiUser(user) {
 
   const { data: existing } = await sicutiAdmin.auth.admin.getUserById(user.id);
 
+  // Supabase menolak domain .local — konversi ke domain yang valid
+  const sicutiEmail = user.email.endsWith("@sipandai.local")
+    ? user.email.replace("@sipandai.local", "@sso.sipandai.site")
+    : user.email;
+
   if (!existing?.user) {
     const { error: createError } = await sicutiAdmin.auth.admin.createUser({
       id: user.id,
-      email: user.email,
+      email: sicutiEmail,
       email_confirm: true,
       user_metadata: metadata,
       app_metadata: { provider: "sso", providers: ["sso"] },
@@ -162,7 +167,7 @@ async function provisionSicutiUser(user) {
   const { data: linkData, error: linkError } =
     await sicutiAdmin.auth.admin.generateLink({
       type: "magiclink",
-      email: user.email,
+      email: sicutiEmail,
     });
 
   if (linkError || !linkData?.properties?.hashed_token) {
