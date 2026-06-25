@@ -74,6 +74,7 @@ export async function getScopedSicutiEmployeeIds(user) {
   }
 
   if (user.role === "employee") {
+    if (user.employee_id) return [user.employee_id];
     const nip = user.nip ? String(user.nip).trim() : null;
     if (!nip) return [];
     const { data } = await supabase

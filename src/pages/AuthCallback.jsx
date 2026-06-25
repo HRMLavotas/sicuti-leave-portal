@@ -74,21 +74,22 @@ const AuthCallback = () => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "SSO exchange gagal");
 
-        // Simpan ke AuthManager — SiCuti pakai localStorage, bukan Supabase Auth
         const role = data.user?.role || "employee";
-        AuthManager.setSsoSession({
-          id:            data.user.id,
-          email:         data.user.email,
-          name:          data.user.name,
-          role,
-          department:    data.user.department || "Belum Ditetapkan",
-          unit_kerja:    data.user.department || "Belum Ditetapkan",
-          nip:           data.user.nip || null,
-          employee_id:   data.user.employee_id || null,
-          permissions:   getPermissionsForRole(role),
-          access_token:  data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          last_login:    new Date().toISOString(),
+
+        await AuthManager.establishSsoSession({
+          user: {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            role,
+            department: data.user.department || "Belum Ditetapkan",
+            unit_kerja: data.user.department || "Belum Ditetapkan",
+            nip: data.user.nip || null,
+            employee_id: data.user.employee_id || null,
+            permissions: data.user.permissions || getPermissionsForRole(role),
+          },
+          session: data.session,
+          simpel_session: data.simpel_session,
         });
 
         setStatusMsg("Berhasil! Mengalihkan...");

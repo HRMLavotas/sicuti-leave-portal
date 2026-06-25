@@ -40,7 +40,7 @@ async function redeemCode(code) {
 
   const payload = await res.json();
   if (!res.ok) throw new Error(payload.error || "Gagal menukar authorization code");
-  return payload; // { access_token, refresh_token, user_id }
+  return payload;
 }
 
 async function getSimpelUser(accessToken) {
@@ -64,7 +64,9 @@ async function enrichUserFromSimpel(userId, email) {
   const simpelUrl = process.env.SIMPEL_URL;
   const simpelServiceKey = process.env.SIMPEL_SERVICE_ROLE_KEY;
 
-  if (!simpelServiceKey) return { profile: null, role: "employee", nip: extractNip(email, null), employeeId: null };
+  if (!simpelServiceKey) {
+    return { profile: null, role: "employee", nip: extractNip(email, null), simpelEmployee: null };
+  }
 
   const admin = createClient(simpelUrl, simpelServiceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -76,29 +78,150 @@ async function enrichUserFromSimpel(userId, email) {
   ]);
 
   const nip = extractNip(email, profile?.nip);
-  let employeeId = null;
+  let simpelEmployee = null;
 
   if (nip) {
-    const { data: emp } = await admin.from("employees").select("id").eq("nip", nip).maybeSingle();
-    employeeId = emp?.id ?? null;
+    const { data: emp } = await admin
+      .from("employees")
+      .select("id, nip, name, department, position_name, rank_group")
+      .eq("nip", nip)
+      .maybeSingle();
+    simpelEmployee = emp;
   }
-  if (!employeeId) {
-    const { data: emp } = await admin.from("employees").select("id").eq("id", userId).maybeSingle();
-    employeeId = emp?.id ?? null;
+  if (!simpelEmployee) {
+    const { data: emp } = await admin
+      .from("employees")
+      .select("id, nip, name, department, position_name, rank_group")
+      .eq("id", userId)
+      .maybeSingle();
+    simpelEmployee = emp;
   }
 
   return {
     profile,
     role: roleRow?.role || "employee",
     nip,
-    employeeId,
+    simpelEmployee,
   };
 }
 
 /**
- * SSO exchange — kembalikan data user + token SIMPEL langsung.
- * SiCuti menggunakan AuthManager (localStorage), bukan Supabase Auth SiCuti.
- * Tidak perlu provision/create user di Supabase SiCuti.
+ * Upsert pegawai ke DB SiCuti (by NIP) dan kembalikan ID lokal untuk RLS leave_requests.
+ */
+async function ensureLocalEmployeeId(sicutiAdmin, nip, profile, simpelEmployee, department) {
+  if (!nip) return null;
+
+  const row = {
+    nip: String(nip).trim(),
+    name: simpelEmployee?.name || profile?.full_name || "Pegawai",
+    department: simpelEmployee?.department || profile?.department || department || null,
+    position_name: simpelEmployee?.position_name || profile?.position_name || null,
+    rank_group: simpelEmployee?.rank_group || profile?.rank_group || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await sicutiAdmin
+    .from("employees")
+    .upsert(row, { onConflict: "nip" })
+    .select("id")
+    .single();
+
+  if (error) {
+    const { data: existing } = await sicutiAdmin
+      .from("employees")
+      .select("id")
+      .eq("nip", row.nip)
+      .maybeSingle();
+    return existing?.id ?? null;
+  }
+
+  return data?.id ?? null;
+}
+
+async function provisionSicutiUser(user) {
+  const sicutiUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const sicutiServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!sicutiUrl || !sicutiServiceKey) {
+    throw new Error(
+      "SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY wajib di environment server (Vercel)",
+    );
+  }
+
+  const sicutiAdmin = createClient(sicutiUrl, sicutiServiceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const metadata = {
+    full_name: user.name,
+    department: user.department,
+    role: user.role,
+    nip: user.nip,
+    employee_id: user.employee_id,
+    sso_provider: "simpel",
+    permissions: user.permissions,
+  };
+
+  const { data: existing } = await sicutiAdmin.auth.admin.getUserById(user.id);
+
+  if (!existing?.user) {
+    const { error: createError } = await sicutiAdmin.auth.admin.createUser({
+      id: user.id,
+      email: user.email,
+      email_confirm: true,
+      user_metadata: metadata,
+      app_metadata: { provider: "sso", providers: ["sso"] },
+    });
+    if (createError) throw createError;
+  } else {
+    const { error: updateError } = await sicutiAdmin.auth.admin.updateUserById(user.id, {
+      user_metadata: metadata,
+    });
+    if (updateError) throw updateError;
+  }
+
+  try {
+    const { data: sessionData, error: createSessionError } =
+      await sicutiAdmin.auth.admin.createSession({ user_id: user.id });
+
+    if (!createSessionError && sessionData.session) {
+      return {
+        access_token: sessionData.session.access_token,
+        refresh_token: sessionData.session.refresh_token,
+        expires_at: sessionData.session.expires_at ?? 0,
+      };
+    }
+  } catch {
+    // fallback magic link
+  }
+
+  const { data: linkData, error: linkError } = await sicutiAdmin.auth.admin.generateLink({
+    type: "magiclink",
+    email: user.email,
+  });
+
+  if (linkError || !linkData?.properties?.hashed_token) {
+    throw new Error("Gagal membuat session SiCuti");
+  }
+
+  const { data: sessionData, error: sessionError } = await sicutiAdmin.auth.verifyOtp({
+    token_hash: linkData.properties.hashed_token,
+    type: "email",
+  });
+
+  if (sessionError || !sessionData.session) {
+    throw new Error("Gagal verifikasi session SiCuti");
+  }
+
+  return {
+    access_token: sessionData.session.access_token,
+    refresh_token: sessionData.session.refresh_token,
+    expires_at: sessionData.session.expires_at ?? 0,
+  };
+}
+
+/**
+ * SSO exchange — provision user SiCuti + session RLS + token SIMPEL untuk query pegawai.
  */
 export async function exchangeSsoCredentials(body) {
   const { code, access_token, refresh_token } = body ?? {};
@@ -117,29 +240,51 @@ export async function exchangeSsoCredentials(body) {
   }
 
   const simpelUser = await getSimpelUser(simpelAccessToken);
-  const { profile, role, nip, employeeId } = await enrichUserFromSimpel(
+  const { profile, role, nip, simpelEmployee } = await enrichUserFromSimpel(
     simpelUser.id,
     simpelUser.email,
   );
 
   const meta = simpelUser.user_metadata || {};
+  const department = profile?.department || meta.department || "Belum Ditetapkan";
+
+  const sicutiUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const sicutiServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const sicutiAdmin = createClient(sicutiUrl, sicutiServiceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const localEmployeeId = await ensureLocalEmployeeId(
+    sicutiAdmin,
+    nip,
+    profile,
+    simpelEmployee,
+    department,
+  );
+
+  const ssoUser = {
+    id: simpelUser.id,
+    email: simpelUser.email,
+    name: profile?.full_name || meta.full_name || simpelUser.email,
+    role,
+    department,
+    nip,
+    employee_id: localEmployeeId,
+    permissions: permissionsForRole(role),
+  };
+
+  const session = await provisionSicutiUser(ssoUser);
 
   return {
-    user: {
-      id:          simpelUser.id,
-      email:       simpelUser.email,
-      name:        profile?.full_name || meta.full_name || simpelUser.email,
-      role,
-      department:  profile?.department || meta.department || "Belum Ditetapkan",
-      nip,
-      employee_id: employeeId,
-      permissions: permissionsForRole(role),
-    },
-    // Kembalikan token SIMPEL — AuthCallback di SiCuti akan simpan ke AuthManager
+    user: ssoUser,
     session: {
-      access_token:  simpelAccessToken,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_at: session.expires_at,
+    },
+    simpel_session: {
+      access_token: simpelAccessToken,
       refresh_token: simpelRefreshToken,
-      expires_at:    0,
     },
     provider: "simpel",
   };

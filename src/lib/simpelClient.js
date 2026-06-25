@@ -31,8 +31,16 @@ function getSimpelClient() {
 }
 
 function createSimpelClient(token) {
-  return createClient(SIMPEL_URL, SIMPEL_ANON_KEY, {
-    ...createDisabledAuthOptions("sb-simpel-query-client"),
+  const url = SIMPEL_URL;
+  const key = SIMPEL_ANON_KEY;
+  // Hindari GoTrueClient ganda jika URL sama dengan project SiCuti
+  const storageKey =
+    url && url === import.meta.env.VITE_SUPABASE_URL
+      ? "sb-simpel-sso-proxy"
+      : "sb-simpel-query-client";
+
+  return createClient(url, key, {
+    ...createDisabledAuthOptions(storageKey),
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
 }

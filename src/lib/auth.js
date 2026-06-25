@@ -27,6 +27,34 @@ export class AuthManager {
     };
   }
 
+  /**
+   * Setelah SSO: sesi Supabase SiCuti (RLS) + token SIMPEL di cache.
+   */
+  static async establishSsoSession({ user, session, simpel_session }) {
+    if (!session?.access_token) {
+      throw new Error("Session SiCuti tidak valid");
+    }
+
+    const { error } = await supabase.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token || "",
+    });
+    if (error) throw error;
+
+    const mapped = this.mapUserFromSession(
+      (await supabase.auth.getSession()).data.session,
+    );
+
+    this.setSsoSession({
+      ...(mapped || user),
+      ...user,
+      permissions: user.permissions || mapped?.permissions || [],
+      access_token: simpel_session?.access_token,
+      refresh_token: simpel_session?.refresh_token,
+      last_login: new Date().toISOString(),
+    });
+  }
+
   static async setSession(session) {
     if (!session?.access_token) {
       throw new Error("Session token tidak valid");
@@ -170,7 +198,19 @@ if (typeof window !== "undefined") {
   supabase.auth.onAuthStateChange((_event, session) => {
     const user = AuthManager.mapUserFromSession(session);
     if (user) {
-      localStorage.setItem("user_data", JSON.stringify(user));
+      const existing = AuthManager.getUserSession();
+      localStorage.setItem(
+        "user_data",
+        JSON.stringify({
+          ...user,
+          permissions:
+            user.permissions?.length
+              ? user.permissions
+              : existing?.permissions || [],
+          access_token: existing?.access_token,
+          refresh_token: existing?.refresh_token,
+        }),
+      );
     }
   });
 }

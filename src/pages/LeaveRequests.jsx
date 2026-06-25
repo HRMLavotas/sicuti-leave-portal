@@ -83,15 +83,6 @@ const LeaveRequests = () => {
       const scopedEmployeeIds = await getScopedSicutiEmployeeIds(currentUser);
       countQuery = applySicutiEmployeeIdFilter(countQuery, scopedEmployeeIds);
 
-      // Apply filters to the count query
-      // Note: For search across joined tables, we'll fetch all data and filter client-side
-      // This is more reliable than complex Supabase OR queries across relations
-      if (selectedUnitPenempatan && selectedUnitPenempatan.trim() !== "") {
-        countQuery = countQuery.ilike(
-          "employees.department",
-          `%${selectedUnitPenempatan}%`,
-        );
-      }
       if (
         selectedLeaveType &&
         selectedLeaveType !== "all" &&
@@ -112,7 +103,6 @@ const LeaveRequests = () => {
         );
       }
 
-      // Get the data query with pagination
       let dataQuery = supabase
         .from("leave_requests")
         .select(
