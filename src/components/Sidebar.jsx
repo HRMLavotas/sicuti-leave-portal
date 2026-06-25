@@ -14,7 +14,7 @@ import {
   Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { signOut, getAuthUser } from "@/lib/supabaseSSO";
+import { signOut } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
 import PwaInstallPrompt from "@/components/PwaInstallPrompt";
 
@@ -106,18 +106,8 @@ const Sidebar = ({ isOpen, setIsOpen, isMobile }) => {
           nip: sessionUser.nip || null,
         });
       } else {
-        // Fallback: coba dari Supabase auth
-        const loadFromAuth = async () => {
-          const authUser = await getAuthUser();
-          if (authUser) {
-            setUser({
-              name: authUser.email?.split('@')[0] || 'User',
-              role: 'user',
-              permissions: ['all'],
-            });
-          }
-        };
-        loadFromAuth();
+        // Tidak ada session — redirect akan ditangani ProtectedRoute
+        setUser(null);
       }
     };
     loadUser();
