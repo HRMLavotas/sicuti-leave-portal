@@ -172,7 +172,7 @@ function DocxSuratKeterangan() {
           throw new Error("User not authenticated");
         }
 
-        console.log("Current user:", { role: currentUser.role, unit: currentUser.unit_kerja || currentUser.unitKerja });
+        console.log("Current user:", { role: currentUser.role, unit: currentUser.department });
 
         let query = supabase.from("templates").select("*");
 
@@ -182,7 +182,7 @@ function DocxSuratKeterangan() {
           query = query.eq("template_scope", "global");
         } else if (currentUser.role === "admin_unit") {
           // Admin unit sees only their own unit's templates
-          const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
+          const userUnit = currentUser.department;
           if (!userUnit) {
             throw new Error("Admin unit user must have a unit assigned");
           }
@@ -1427,7 +1427,7 @@ function DocxSuratKeterangan() {
                 return (
                   <div className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">
                     <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                    Template Unit: {currentUser.unit_kerja || currentUser.unitKerja || "Unit Anda"}
+                    Template Unit: {currentUser.department || "Unit Anda"}
                   </div>
                 );
               }

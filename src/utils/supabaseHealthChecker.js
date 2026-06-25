@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient";
+﻿import { supabase } from "@/lib/supabaseClient";
 
 /**
  * Check if Supabase connection is working
@@ -48,7 +48,7 @@ export const testTableAccess = async (tableName, userSession = null) => {
     if (userSession) {
       console.log(`🔍 User context:`, {
         role: userSession.role,
-        unit: userSession.unit_kerja || userSession.unitKerja
+        unit: userSession.department
       });
     }
     

@@ -71,8 +71,6 @@ const AuthCallback = () => {
         name: meta.full_name || payload.email,
         role: meta.role || "employee",          // Role langsung dari SIMPEL
         department: meta.department || "Belum Ditetapkan",
-        unit_kerja: meta.department || "Belum Ditetapkan",  // alias untuk kompatibilitas
-        unitKerja: meta.department || "Belum Ditetapkan",   // alias untuk kompatibilitas
         nip: meta.nip || null,
         permissions: getPermissionsForRole(meta.role || "employee"),
         last_login: new Date().toISOString(),

@@ -188,14 +188,14 @@ export const validateUserPermissions = (user, action, proposal = null) => {
       if (user.role !== 'admin_unit') {
         errors.push("Hanya admin unit yang dapat membuat usulan");
       }
-      if (!user.unitKerja || user.unitKerja.trim().length === 0) {
+      if (!user.department || user.department.trim().length === 0) {
         errors.push("Unit kerja user tidak valid");
       }
       break;
 
     case 'view_proposal':
       if (user.role === 'admin_unit') {
-        if (!proposal || proposal.proposer_unit !== user.unitKerja) {
+        if (!proposal || proposal.proposer_unit !== user.department) {
           errors.push("Anda hanya dapat melihat usulan dari unit kerja sendiri");
         }
       } else if (user.role !== 'admin_pusat') {

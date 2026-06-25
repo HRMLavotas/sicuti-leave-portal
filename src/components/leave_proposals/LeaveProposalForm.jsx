@@ -76,7 +76,7 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
               ...prev,
               employee_name: currentUser.name || "Pegawai",
               employee_nip: currentUser.nip,
-              employee_department: currentUser.unitKerja || currentUser.unit_kerja || "",
+              employee_department: currentUser.department || "",
             }));
             setProposalTitle(`Pengajuan Cuti - ${currentUser.name}`);
           }
@@ -219,7 +219,7 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
 
       const proposerUnit = isEmployee 
         ? currentLeaveItem.employee_department 
-        : (currentUser.unitKerja || currentUser.unit_kerja || "Unknown");
+        : (currentUser.department || "Unknown");
 
       const proposalData = {
         title: proposalTitle || `Pengajuan Cuti - ${currentLeaveItem.employee_name}`,
@@ -267,7 +267,7 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
         <CardHeader>
           <CardTitle className="text-white flex items-center">
             {isEmployee ? <FileText className="w-5 h-5 mr-2" /> : <Users className="w-5 h-5 mr-2" />}
-            {isEmployee ? "Formulir Pengajuan Cuti Mandiri" : `Buat Usulan Cuti - ${currentUser.unitKerja}`}
+            {isEmployee ? "Formulir Pengajuan Cuti Mandiri" : `Buat Usulan Cuti - ${currentUser.department}`}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">

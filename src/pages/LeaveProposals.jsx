@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FileText, Plus, List, CheckCircle, XCircle, Clock, Calendar as CalendarIcon, User, UserCheck, Check, ChevronsUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -115,7 +115,7 @@ const LeaveProposals = () => {
 
       const proposerUnit = isEmployee 
         ? proposalData.proposer_unit 
-        : (currentUser.unitKerja || currentUser.unit_kerja || "Unknown");
+        : (currentUser.department || "Unknown");
 
       const proposalPayload = {
         proposal_title: proposalData.title,
@@ -298,7 +298,7 @@ const LeaveProposals = () => {
   // - For employee: proposals proposed by them.
   // - For admin_unit: proposals created by them (where proposed_by === currentUser.id).
   // "employee-approvals" shows:
-  // - For admin_unit: proposals proposed by employees in their unit (proposed_by !== currentUser.id && proposer_unit === currentUser.unitKerja).
+  // - For admin_unit: proposals proposed by employees in their unit (proposed_by !== currentUser.id && proposer_unit === currentUser.department).
   const displayProposals = proposals.filter((p) => {
     if (isEmployee) {
       return p.proposed_by === currentUser.id;
@@ -308,7 +308,7 @@ const LeaveProposals = () => {
     if (activeTab === "my-proposals") {
       return p.proposed_by === currentUser.id;
     } else {
-      return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.unitKerja;
+      return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department;
     }
   });
 
@@ -327,7 +327,7 @@ const LeaveProposals = () => {
           <p className="text-slate-400">
             {isEmployee 
               ? "Ajukan cuti dan pantau status persetujuan dari Admin Unit Anda" 
-              : `Kelola usulan unit dan persetujuan cuti pegawai di lingkungan ${currentUser.unitKerja}`}
+              : `Kelola usulan unit dan persetujuan cuti pegawai di lingkungan ${currentUser.department}`}
           </p>
         </div>
         <Button
@@ -355,9 +355,9 @@ const LeaveProposals = () => {
           >
             Persetujuan Cuti Pegawai
             {activeTab === "employee-approvals" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />}
-            {proposals.filter(p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.unitKerja && p.status === 'pending').length > 0 && (
+            {proposals.filter(p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending').length > 0 && (
               <Badge className="ml-2 bg-yellow-500 text-slate-900 w-5 h-5 p-0 flex items-center justify-center rounded-full text-xs inline-flex">
-                {proposals.filter(p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.unitKerja && p.status === 'pending').length}
+                {proposals.filter(p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending').length}
               </Badge>
             )}
           </button>

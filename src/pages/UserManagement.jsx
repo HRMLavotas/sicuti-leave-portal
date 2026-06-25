@@ -127,15 +127,10 @@ const UserManagement = () => {
       return;
     }
 
-    // Map database fields to frontend format
-    const mappedUsers = (data || []).map(user => ({
       ...user,
-      unitKerja: user.unit_kerja // Map unit_kerja to unitKerja
-    }));
 
-    console.log("Mapped users with unitKerja:", mappedUsers.map(u => ({ id: u.id, name: u.name, unitKerja: u.unitKerja, unit_kerja: u.unit_kerja })));
 
-    setUsers(mappedUsers);
+    setUsers(data || []);
     setFilteredUsers(mappedUsers);
   };
 
@@ -406,7 +401,7 @@ const UserManagement = () => {
                       </td>
                       <td className="py-4 px-4 text-white">{user.username}</td>
                       <td className="py-4 px-4">{getRoleBadge(user.role)}</td>
-                      <td className="py-4 px-4 text-white">{user.unitKerja}</td>
+                      <td className="py-4 px-4 text-white">{user.department}</td>
                       <td className="py-4 px-4">{getStatusBadge(user.status)}</td>
                       <td className="py-4 px-4">
                         <div className="flex flex-wrap gap-1">
@@ -486,7 +481,7 @@ const AddUserDialog = ({ onAdd }) => {
     username: "",
     password: "",
     role: "employee",
-    unitKerja: "",
+    department: "",
   });
   const { departments, isLoadingDepartments } = useDepartments();
 
@@ -499,7 +494,7 @@ const AddUserDialog = ({ onAdd }) => {
       username: "",
       password: "",
       role: "employee",
-      unitKerja: "",
+      department: "",
     });
   };
 
@@ -569,10 +564,10 @@ const AddUserDialog = ({ onAdd }) => {
           </Select>
         </div>
         <div>
-          <Label htmlFor="unitKerja" className="text-slate-300">Unit Kerja</Label>
+          <Label htmlFor="department" className="text-slate-300">Unit Kerja</Label>
           <AutocompleteInput
-            value={formData.unitKerja}
-            onChange={(val) => setFormData({ ...formData, unitKerja: val })}
+            value={formData.department}
+            onChange={(val) => setFormData({ ...formData, department: val })}
             options={departments}
             loading={isLoadingDepartments}
             placeholder="Ketik nama unit..."
@@ -598,12 +593,12 @@ const EditUserDialog = ({ user, onEdit, onClose }) => {
     username: user.username || "",
     password: "",
     role: user.role,
-    unitKerja: user.unitKerja,
+    department: user.department,
     status: user.status,
   });
 
-  console.log("EditUserDialog initialized with user:", { id: user.id, name: user.name, unitKerja: user.unitKerja });
-  console.log("Form data unitKerja:", formData.unitKerja);
+  console.log("EditUserDialog initialized with user:", { id: user.id, name: user.name, department: user.department });
+  console.log("Form data department:", formData.department);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -672,10 +667,10 @@ const EditUserDialog = ({ user, onEdit, onClose }) => {
         </Select>
       </div>
       <div>
-        <Label htmlFor="edit-unitKerja" className="text-slate-300">Unit Kerja</Label>
+        <Label htmlFor="edit-department" className="text-slate-300">Unit Kerja</Label>
         <AutocompleteInput
-          value={formData.unitKerja}
-          onChange={(val) => setFormData({ ...formData, unitKerja: val })}
+          value={formData.department}
+          onChange={(val) => setFormData({ ...formData, department: val })}
           options={departments}
           loading={isLoadingDepartments}
           placeholder="Ketik nama unit..."

@@ -47,9 +47,7 @@ export class AuthManager {
           id: parsedUser.id,
           name: parsedUser.name,
           role: parsedUser.role,
-          unit_kerja: parsedUser.unit_kerja,
-          unitKerja: parsedUser.unitKerja,
-          hasUnitData: !!(parsedUser.unit_kerja || parsedUser.unitKerja)
+          hasUnitData: !!parsedUser.department
         });
       }
 
@@ -195,7 +193,7 @@ export class AuthManager {
 
     // Admin unit can only access their own unit
     if (user.role === "admin_unit") {
-      const userUnit = user.unit_kerja || user.unitKerja;
+      const userUnit = user.department;
       return userUnit === unitName;
     }
 

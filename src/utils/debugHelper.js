@@ -13,8 +13,7 @@ export const debugUserSession = () => {
   console.log("ðŸ” User ID:", user?.id);
   console.log("ðŸ” User name:", user?.name);
   console.log("ðŸ” User role:", user?.role);
-  console.log("ðŸ” User unit_kerja:", user?.unit_kerja);
-  console.log("ðŸ” User unitKerja:", user?.unitKerja);
+  console.log("ðŸ” User department:", user?.department);
   console.log("ðŸ” User permissions:", user?.permissions);
   console.log("ðŸ” User status:", user?.status);
   console.log("ðŸ” =================================");
@@ -23,7 +22,7 @@ export const debugUserSession = () => {
   console.log("ðŸ” Role checks:");
   console.log("ðŸ” - Is admin_unit:", user?.role === 'admin_unit');
   console.log("ðŸ” - Is master_admin:", user?.role === 'admin_pusat');
-  console.log("ðŸ” - Has unit data:", !!(user?.unit_kerja || user?.unitKerja));
+  console.log("ðŸ” - Has unit data:", !!user?.department);
   console.log("ðŸ” =================================");
   
   return user;

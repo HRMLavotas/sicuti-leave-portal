@@ -80,13 +80,13 @@ const LeaveRequests = () => {
       // DEBUG: Log user session for leave requests
       console.log("ðŸ” DEBUG LeaveRequests - User session:", {
         role: currentUser?.role,
-        unit_kerja: currentUser?.unit_kerja,
-        unitKerja: currentUser?.unitKerja,
+        department: currentUser?.department,
+
         nip: currentUser?.nip
       });
 
-      // Fix: Use unit_kerja instead of unitKerja
-      const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja || currentUser?.department;
+      // Fix: Use department field from user session
+      const userUnit = currentUser?.department;
       let employeeIdsFilter = null;
 
       // Employee role: hanya bisa melihat data cuti mereka sendiri berdasarkan NIP

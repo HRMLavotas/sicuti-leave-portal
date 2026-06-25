@@ -94,7 +94,7 @@ const TemplateManagement = () => {
           throw new Error("User not authenticated");
         }
 
-        console.log("Current user:", { role: currentUser.role, unit: currentUser.unit_kerja || currentUser.unitKerja });
+        console.log("Current user:", { role: currentUser.role, unit: currentUser.department });
 
         let query = supabase.from("templates").select("*");
 
@@ -104,7 +104,7 @@ const TemplateManagement = () => {
           query = query.eq("template_scope", "global");
         } else if (currentUser.role === "admin_unit") {
           // Admin unit sees only their own unit's templates
-          const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
+          const userUnit = currentUser.department;
           if (!userUnit) {
             throw new Error("Admin unit user must have a unit assigned");
           }
@@ -273,7 +273,7 @@ const TemplateManagement = () => {
 
       if (currentUser.role === "admin_unit") {
         templateScope = "unit";
-        unitScope = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
+        unitScope = currentUser.department;
         
         if (!unitScope) {
           throw new Error("Admin unit user must have a unit assigned");
@@ -393,7 +393,7 @@ const TemplateManagement = () => {
       // Check permissions
       if (currentUser.role === "admin_unit") {
         // Admin unit can only delete their own unit's templates
-        const userUnit = currentUser.unit_kerja || currentUser.unitKerja || currentUser.department;
+        const userUnit = currentUser.department;
         if (templateToDelete.template_scope !== "unit" || templateToDelete.unit_scope !== userUnit) {
           throw new Error("You can only delete templates from your own unit");
         }
@@ -472,7 +472,7 @@ const TemplateManagement = () => {
                   <div className="flex items-center gap-2 text-sm">
                     <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
                     <span className="text-slate-300">
-                      Admin Unit: Template khusus untuk {currentUser.unit_kerja || currentUser.unitKerja || "unit Anda"}
+                      Admin Unit: Template khusus untuk {currentUser.department || "unit Anda"}
                     </span>
                   </div>
                 );

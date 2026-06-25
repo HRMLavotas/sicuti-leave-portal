@@ -277,7 +277,7 @@ const Employees = () => {
 
       // Apply unit-based filtering for admin_unit users
       const currentUser = AuthManager.getUserSession();
-      const userUnit = currentUser?.unit_kerja || currentUser?.unitKerja || currentUser?.department;
+      const userUnit = currentUser?.department;
 
       if (currentUser && currentUser.role === 'admin_unit' && userUnit) {
         query = query.eq("department", userUnit);
