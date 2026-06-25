@@ -54,4 +54,44 @@ export const supabaseSimpelAdmin = createClient(
 export const supabaseAuth = supabaseSimpelAdmin;
 
 /**
+ * Redirect ke halaman login SIPANDAI Portal
  */
+export const redirectToSimpelLogin = () => {
+  const portalUrl = import.meta.env.VITE_SIMPEL_APP_URL || 'https://sipandai.site';
+  window.location.href = `${portalUrl}/portal`;
+};
+
+/**
+ * Ambil session dari localStorage via AuthManager
+ * Return null jika tidak ada session aktif
+ */
+export const getAuthSession = async () => {
+  try {
+    const { AuthManager } = await import('./auth');
+    return AuthManager.getUserSession();
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Cek apakah konfigurasi SSO lengkap
+ */
+export const isSSOConfigured = () => {
+  return !!(
+    import.meta.env.VITE_SIMPEL_URL &&
+    import.meta.env.VITE_SIMPEL_SERVICE_ROLE_KEY &&
+    import.meta.env.VITE_SUPABASE_URL &&
+    import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+  );
+};
+
+/**
+ * Kembalikan status tiap env variable SSO
+ */
+export const getConfigStatus = () => ({
+  VITE_SIMPEL_URL: !!import.meta.env.VITE_SIMPEL_URL,
+  VITE_SIMPEL_SERVICE_ROLE_KEY: !!import.meta.env.VITE_SIMPEL_SERVICE_ROLE_KEY,
+  VITE_SUPABASE_URL: !!import.meta.env.VITE_SUPABASE_URL,
+  VITE_SUPABASE_SERVICE_ROLE_KEY: !!import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY,
+});
