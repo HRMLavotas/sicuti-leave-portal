@@ -33,11 +33,18 @@ const AuthCallback = () => {
       const hashParams  = new URLSearchParams(window.location.hash.replace(/^#/, ""));
 
       const code          = queryParams.get("code");
+      const sso_error     = queryParams.get("sso_error");
       const access_token  = queryParams.get("access_token")  || hashParams.get("access_token");
       const refresh_token = queryParams.get("refresh_token") || hashParams.get("refresh_token");
 
       // Bersihkan URL secepatnya
       window.history.replaceState({}, document.title, "/auth/callback");
+
+      // SSO code flow gagal di sisi SIPANDAI
+      if (sso_error) {
+        setErrorMsg("Sesi SSO gagal dibuat. Silakan login ulang melalui portal SIPANDAI.");
+        return;
+      }
 
       // ── Opsi 1: Authorization code (preferred) ──────────────────────────
       if (code) {
