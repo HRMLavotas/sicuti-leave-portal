@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from "react";
+﻿import React, { Suspense, lazy } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -8,16 +8,15 @@ import {
 
 import { Toaster } from "@/components/ui/toaster";
 import Layout from "@/components/Layout";
-import Landing from "@/pages/Landing";
 import AuthCallback from "@/pages/AuthCallback";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ConnectionHealthChecker from "@/components/ConnectionHealthChecker";
 import PwaInstallBanner from "@/components/PwaInstallBanner";
 import { AuthManager } from "@/lib/auth";
-import "@/utils/removeDebugButton"; // Remove debug button
+import "@/utils/removeDebugButton";
 
-// Lazy load heavy pages for better performance
+// Lazy load heavy pages
 const Employees = lazy(() => import("@/pages/Employees"));
 const UserManagement = lazy(() => import("@/pages/UserManagement"));
 const LeaveRequests = lazy(() => import("@/pages/LeaveRequests"));
@@ -30,7 +29,6 @@ const DocxTemplateManagement = lazy(() => import("@/pages/DocxTemplateManagement
 const Settings = lazy(() => import("@/pages/Settings"));
 const PdfDemo = lazy(() => import("@/pages/PdfDemo"));
 
-// Page loading fallback
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-[60vh]">
     <div className="flex flex-col items-center space-y-3">
@@ -40,11 +38,6 @@ const PageLoader = () => (
   </div>
 );
 
-/**
- * RoleGuard: Membatasi akses halaman berdasarkan role pengguna.
- * Jika user dengan role 'employee' mencoba mengakses halaman admin,
- * akan diredirect ke /leave-requests.
- */
 const RoleGuard = ({ children, blockedRoles = [] }) => {
   const user = AuthManager.getUserSession();
   if (user && blockedRoles.includes(user.role)) {
@@ -60,11 +53,13 @@ function App() {
         <Router>
           <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
             <Routes>
-              {/* Public routes - no layout */}
-              <Route path="/" element={<Landing />} />
+              {/* SSO callback — public */}
               <Route path="/auth/callback" element={<AuthCallback />} />
 
-              {/* Protected routes - with layout */}
+              {/* Root redirect langsung ke app */}
+              <Route path="/" element={<Navigate to="/leave-requests" replace />} />
+
+              {/* Protected routes */}
               <Route
                 path="/*"
                 element={
@@ -72,7 +67,6 @@ function App() {
                     <Layout>
                       <Suspense fallback={<PageLoader />}>
                         <Routes>
-                          {/* Admin-only routes (blocked for employee) */}
                           <Route path="/employees" element={
                             <RoleGuard blockedRoles={["employee"]}>
                               <Employees />
@@ -108,20 +102,9 @@ function App() {
                               <Settings />
                             </RoleGuard>
                           } />
-
-                          {/* Routes accessible by all roles (including employee) */}
-                          <Route
-                            path="/leave-requests"
-                            element={<LeaveRequests />}
-                          />
-                          <Route
-                            path="/leave-proposals"
-                            element={<LeaveProposals />}
-                          />
-                          <Route
-                            path="/leave-history"
-                            element={<LeaveHistoryPage />}
-                          />
+                          <Route path="/leave-requests" element={<LeaveRequests />} />
+                          <Route path="/leave-proposals" element={<LeaveProposals />} />
+                          <Route path="/leave-history" element={<LeaveHistoryPage />} />
                           {import.meta.env.VITE_TEMPO && (
                             <Route path="/tempobook/*" />
                           )}

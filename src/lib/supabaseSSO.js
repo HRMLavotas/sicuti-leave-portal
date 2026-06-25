@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+﻿import { createClient } from "@supabase/supabase-js";
 
 /**
  * SSO Integration: SIMPEL sebagai Master Auth, SiCuti sebagai Consumer
@@ -7,53 +7,48 @@ import { createClient } from "@supabase/supabase-js";
  * supabaseData  → Supabase SiCuti (untuk query data cuti, pakai service_role)
  */
 
-// Validasi environment variables
 const validateEnv = () => {
   const required = {
     VITE_SIMPEL_URL: import.meta.env.VITE_SIMPEL_URL,
     VITE_SIMPEL_ANON_KEY: import.meta.env.VITE_SIMPEL_ANON_KEY,
     VITE_SIMPEL_SERVICE_ROLE_KEY: import.meta.env.VITE_SIMPEL_SERVICE_ROLE_KEY,
-    VITE_SIMPEL_APP_URL: import.meta.env.VITE_SIMPEL_APP_URL,
     VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL,
     VITE_SUPABASE_SERVICE_ROLE_KEY: import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY,
   };
 
   const missing = Object.entries(required)
-    .filter(([key, value]) => !value)
+    .filter(([, value]) => !value)
     .map(([key]) => key);
 
   if (missing.length > 0) {
-    console.error("[SSO Config] ❌ Environment variables yang hilang:", missing);
-    console.error("[SSO Config] Aplikasi mungkin tidak berfungsi dengan baik!");
-    console.error("[SSO Config] Pastikan semua variable sudah dikonfigurasi di Vercel/Environment");
+    console.error("[SSO Config] Environment variables yang hilang:", missing);
   } else {
-    console.log("[SSO Config] ✅ Semua environment variables terdeteksi");
+    console.log("[SSO Config] Semua environment variables terdeteksi");
   }
 
   return missing.length === 0;
 };
 
-// Jalankan validasi saat module di-load
 const isConfigValid = validateEnv();
 
-// Client untuk AUTH - terhubung ke project SIMPEL
+// Client untuk AUTH — terhubung ke project SIMPEL
 export const supabaseAuth = createClient(
-  import.meta.env.VITE_SIMPEL_URL || "https://placeholder.supabase.co",
-  import.meta.env.VITE_SIMPEL_ANON_KEY || "placeholder",
+  import.meta.env.VITE_SIMPEL_URL,
+  import.meta.env.VITE_SIMPEL_ANON_KEY,
   {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
-      storageKey: "simpel-auth-session", // key unik agar tidak bentrok
+      storageKey: "simpel-auth-session",
     },
   }
 );
 
-// Client untuk DATA - terhubung ke project SiCuti (service_role bypass RLS)
+// Client untuk DATA — terhubung ke project SiCuti (service_role bypass RLS)
 export const supabaseData = createClient(
-  import.meta.env.VITE_SUPABASE_URL || "https://placeholder.supabase.co",
-  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY || "placeholder",
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY,
   {
     auth: {
       persistSession: false,
@@ -62,10 +57,10 @@ export const supabaseData = createClient(
   }
 );
 
-// Client admin untuk SIMPEL (service_role) untuk sinkronisasi data pegawai & user profiles
+// Client admin untuk SIMPEL (service_role) — sinkronisasi profiles & roles
 export const supabaseSimpelAdmin = createClient(
-  import.meta.env.VITE_SIMPEL_URL || "https://placeholder.supabase.co",
-  import.meta.env.VITE_SIMPEL_SERVICE_ROLE_KEY || "placeholder",
+  import.meta.env.VITE_SIMPEL_URL,
+  import.meta.env.VITE_SIMPEL_SERVICE_ROLE_KEY,
   {
     auth: {
       persistSession: false,
@@ -75,21 +70,14 @@ export const supabaseSimpelAdmin = createClient(
 );
 
 /**
- * Redirect pengguna ke halaman login SIMPEL
- * Setelah login, SIMPEL akan kirim token ke /auth/callback SiCuti
+ * Redirect pengguna ke halaman login SIMPEL.
+ * Setelah login, SIMPEL akan kirim token ke /auth/callback SiCuti.
  */
 export const redirectToSimpelLogin = () => {
-  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  const simpelAppUrl = isLocal 
-    ? (import.meta.env.VITE_SIMPEL_APP_URL || "http://localhost:8080")
-    : "https://sipandai.site";
-  
   const sicutiCallbackUrl = `${window.location.origin}/auth/callback`;
-  const redirectUrl = `${simpelAppUrl}/auth?redirect=${encodeURIComponent(sicutiCallbackUrl)}`;
-  
+  const redirectUrl = `https://sipandai.site/auth?redirect=${encodeURIComponent(sicutiCallbackUrl)}`;
+
   console.log("[SSO] Redirect ke SIMPEL:", redirectUrl);
-  console.log("[SSO] Callback URL:", sicutiCallbackUrl);
-  
   window.location.href = redirectUrl;
 };
 
@@ -116,28 +104,21 @@ export const getAuthUser = async () => {
  */
 export const signOut = async () => {
   await supabaseAuth.auth.signOut();
-  const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  const portalUrl = isLocal ? "http://localhost:8080/portal" : "https://sipandai.site/portal";
-  window.location.href = portalUrl;
+  window.location.href = "https://sipandai.site/portal";
 };
 
 /**
  * Check apakah konfigurasi SSO sudah lengkap
  */
-export const isSSOConfigured = () => {
-  return isConfigValid;
-};
+export const isSSOConfigured = () => isConfigValid;
 
 /**
  * Get status konfigurasi environment variables
  */
-export const getConfigStatus = () => {
-  return {
-    VITE_SIMPEL_URL: !!import.meta.env.VITE_SIMPEL_URL,
-    VITE_SIMPEL_ANON_KEY: !!import.meta.env.VITE_SIMPEL_ANON_KEY,
-    VITE_SIMPEL_SERVICE_ROLE_KEY: !!import.meta.env.VITE_SIMPEL_SERVICE_ROLE_KEY,
-    VITE_SIMPEL_APP_URL: !!import.meta.env.VITE_SIMPEL_APP_URL,
-    VITE_SUPABASE_URL: !!import.meta.env.VITE_SUPABASE_URL,
-    VITE_SUPABASE_SERVICE_ROLE_KEY: !!import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY,
-  };
-};
+export const getConfigStatus = () => ({
+  VITE_SIMPEL_URL: !!import.meta.env.VITE_SIMPEL_URL,
+  VITE_SIMPEL_ANON_KEY: !!import.meta.env.VITE_SIMPEL_ANON_KEY,
+  VITE_SIMPEL_SERVICE_ROLE_KEY: !!import.meta.env.VITE_SIMPEL_SERVICE_ROLE_KEY,
+  VITE_SUPABASE_URL: !!import.meta.env.VITE_SUPABASE_URL,
+  VITE_SUPABASE_SERVICE_ROLE_KEY: !!import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY,
+});
