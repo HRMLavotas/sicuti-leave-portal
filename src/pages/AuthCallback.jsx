@@ -67,19 +67,25 @@ const AuthCallback = () => {
 
         // Simpan ke AuthManager — SiCuti pakai localStorage, bukan Supabase Auth
         const role = data.user?.role || "employee";
-        AuthManager.setUserSession({
-          id:            data.user.id,
-          email:         data.user.email,
-          name:          data.user.name,
-          role,
-          department:    data.user.department || "Belum Ditetapkan",
-          unit_kerja:    data.user.department || "Belum Ditetapkan",
-          nip:           data.user.nip || null,
-          employee_id:   data.user.employee_id || null,
-          permissions:   getPermissionsForRole(role),
-          access_token:  data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          last_login:    new Date().toISOString(),
+        await AuthManager.establishSsoSession({
+          user: {
+            id:            data.user.id,
+            email:         data.user.email,
+            name:          data.user.name,
+            role,
+            department:    data.user.department || "Belum Ditetapkan",
+            unit_kerja:    data.user.department || "Belum Ditetapkan",
+            nip:           data.user.nip || null,
+            employee_id:   data.user.employee_id || null,
+            permissions:   getPermissionsForRole(role),
+            access_token:  data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          },
+          session: data.session,
+          simpel_session: {
+            access_token:  data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          },
         });
 
         setStatusMsg("Berhasil! Mengalihkan...");
