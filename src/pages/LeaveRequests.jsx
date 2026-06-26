@@ -411,7 +411,7 @@ const LeaveRequests = () => {
                 {isEmployee ? "Ajukan Cuti" : "Input Data Cuti"}
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg">
+            <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {editingRequest ? "Edit Data Cuti" : isEmployee ? "Form Pengajuan Cuti" : "Form Input Data Cuti"}

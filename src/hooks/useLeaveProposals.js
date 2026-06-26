@@ -154,7 +154,7 @@ export const useLeaveProposals = () => {
           reason: emp.reason || "",
           address_during_leave: emp.address_during_leave || "",
           application_form_date: emp.application_form_date || null,
-          status: "pending",
+          status: "proposed",
         }));
 
         const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
@@ -561,8 +561,8 @@ export const useLeaveProposals = () => {
         leave_period: emp.leave_period || emp.leave_quota_year,
         reason: emp.reason || "",
         address_during_leave: emp.address_during_leave || "",
-        application_form_date: emp.application_form_date || null,
-        status: "pending",
+          application_form_date: emp.application_form_date || null,
+          status: "proposed",
       }));
 
       const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
