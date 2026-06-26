@@ -442,7 +442,6 @@ const LeaveRequests = () => {
             </DialogContent>
           </Dialog>
         </div>
-        </div>
       </motion.div>
 
       <motion.div
