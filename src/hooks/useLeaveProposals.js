@@ -361,7 +361,7 @@ export const useLeaveProposals = () => {
     }
   }, [toast, fetchProposals]);
 
-  const approveEmployeeProposal = useCallback(async (proposalId, items, approvalData, approvalType = "issue_letter") => {
+  const approveEmployeeProposal = useCallback(async (proposalId, items, approvalData = {}) => {
     try {
       const currentUser = AuthManager.getUserSession();
       if (!currentUser) throw new Error("User not authenticated");
@@ -374,14 +374,6 @@ export const useLeaveProposals = () => {
         .maybeSingle();
       if (proposalFetchError) throw proposalFetchError;
 
-      let proposalFinalStatus;
-      if (approvalType === "issue_letter") {
-        proposalFinalStatus = "approved";
-      } else {
-        // Just approve without issuing letter, mark proposal as processed for batch letter
-        proposalFinalStatus = "processed";
-      }
-
       await finalizeApprovedProposalItems({
         proposalId,
         items,
@@ -391,19 +383,11 @@ export const useLeaveProposals = () => {
 
       // 2. Build update data
       const updateData = {
-        status: proposalFinalStatus,
+        status: "processed",
         // Don't set approved_by due to foreign key constraint with SIMPLE SSO
         approved_date: new Date().toISOString(),
         notes: approvalData.notes || "",
       };
-
-      // Simpan detail surat jika sudah diisi di dialog approval, termasuk mode buat surat nanti.
-      if (approvalData.letter_number) {
-        updateData.letter_number = approvalData.letter_number;
-      }
-      if (approvalData.letter_date) {
-        updateData.letter_date = approvalData.letter_date;
-      }
 
       // Update the proposal status
       const { error: updateErr } = await supabase
@@ -416,10 +400,8 @@ export const useLeaveProposals = () => {
       // Status item sudah disinkronkan saat finalisasi leave_requests dan saldo cuti.
 
       toast({
-        title: "Success",
-        description: approvalType === "issue_letter" 
-          ? "Pengajuan cuti pegawai berhasil disetujui dan surat diterbitkan" 
-          : "Pengajuan cuti pegawai berhasil disetujui dan siap dibuat surat keterangan",
+        title: "Berhasil",
+        description: "Pengajuan cuti pegawai berhasil disetujui dan masuk ke tab Buat Surat Keterangan",
       });
 
       await fetchProposals();

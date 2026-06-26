@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -123,10 +122,6 @@ const LeaveProposals = () => {
   const [tableExists, setTableExists] = useState(true);
   const [activeTab, setActiveTab] = useState("my-proposals");
 
-  // Signers from localStorage
-  const [signers, setSigners] = useState([]);
-  const [selectedSigner, setSelectedSigner] = useState("");
-
   // Dialog state
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [showRejectDialog, setShowRejectDialog]   = useState(false);
@@ -139,8 +134,6 @@ const LeaveProposals = () => {
   const [leaveTypeClassification, setLeaveTypeClassification] = useState({});
   const [generatingLetter, setGeneratingLetter] = useState(false);
 
-  const [letterNumber, setLetterNumber] = useState("");
-  const [letterDate, setLetterDate]     = useState(format(new Date(), "yyyy-MM-dd"));
   const [approvalNotes, setApprovalNotes]   = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
   const [forwardNote, setForwardNote]       = useState("");
@@ -152,18 +145,6 @@ const LeaveProposals = () => {
       .then(({ error }) => {
         setTableExists(!(error && error.code === "42P01"));
       });
-  }, []);
-
-  // Load signers from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("saved_signers");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setSigners(parsed);
-        if (parsed.length > 0) setSelectedSigner(parsed[0].name);
-      }
-    } catch { /* ignore */ }
   }, []);
 
   if (!currentUser || (currentUser.role !== 'admin_unit' && currentUser.role !== 'employee')) {
@@ -205,27 +186,18 @@ const LeaveProposals = () => {
 
   const openApproveDialog = (proposal) => {
     setTargetProposal(proposal);
-    setLetterNumber(`SRT/CUTI/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`);
-    setLetterDate(format(new Date(), "yyyy-MM-dd"));
     setApprovalNotes("");
     setShowApprovalDialog(true);
   };
   const openRejectDialog  = (proposal) => { setTargetProposal(proposal); setRejectionReason(""); setShowRejectDialog(true); };
   const openForwardDialog = (proposal) => { setTargetProposal(proposal); setForwardNote(""); setShowForwardDialog(true); };
 
-  const handleApproveSubmit = async (approvalType) => {
-    if (approvalType === "issue_letter" && !selectedSigner) {
-      toast({ title: "Peringatan", description: "Silakan pilih penandatangan terlebih dahulu.", variant: "destructive" });
-      return;
-    }
+  const handleApproveSubmit = async () => {
     setSubmitting(true);
     try {
       await approveEmployeeProposal(targetProposal.id, targetProposal.leave_proposal_items, {
-        letter_number: letterNumber,
-        letter_date: letterDate,
-        signed_by: selectedSigner || "",
         notes: approvalNotes,
-      }, approvalType);
+      });
       setShowApprovalDialog(false);
       setTargetProposal(null);
     } catch { /* handled by hook */ }
@@ -648,7 +620,7 @@ const LeaveProposals = () => {
   const displayProposals = proposals.filter((p) => {
     if (isEmployee) return p.proposed_by === currentUser.id;
     if (activeTab === "my-proposals") return p.proposed_by === currentUser.id;
-    if (activeTab === "create-letters") return p.status === "processed";
+    if (activeTab === "create-letters") return ["approved", "processed"].includes(p.status);
     // employee-approvals: proposals from employees in this unit (not created by admin themselves)
     return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department;
   });
@@ -656,7 +628,22 @@ const LeaveProposals = () => {
   const pendingEmployeeCount = proposals.filter(
     p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending'
   ).length;
-  const readyForLettersCount = proposals.filter(p => p.status === 'processed').length;
+  const readyForLettersCount = proposals.filter(p => ["approved", "processed"].includes(p.status)).length;
+  const groupedLetterProposals = displayProposals.reduce((groups, proposal) => {
+    const sourceDate = proposal.approved_date || proposal.proposal_date || proposal.created_at;
+    const dateKey = format(new Date(sourceDate), "yyyy-MM-dd");
+    if (!groups[dateKey]) {
+      groups[dateKey] = {
+        date: sourceDate,
+        proposals: [],
+      };
+    }
+    groups[dateKey].proposals.push(proposal);
+    return groups;
+  }, {});
+  const letterProposalGroups = Object.entries(groupedLetterProposals)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([dateKey, group]) => ({ dateKey, ...group }));
 
   if (showCreateForm) {
     return (
@@ -766,6 +753,7 @@ const LeaveProposals = () => {
             <CardTitle>
               {isEmployee ? "Riwayat Pengajuan Cuti"
                 : activeTab === "my-proposals" ? "Daftar Usulan Unit ke Admin Pusat"
+                : activeTab === "create-letters" ? "Daftar Pengajuan Siap Buat Surat"
                 : "Daftar Pengajuan Cuti Pegawai"}
             </CardTitle>
           </CardHeader>
@@ -782,8 +770,56 @@ const LeaveProposals = () => {
                 <p className="text-slate-400">
                   {isEmployee ? "Anda belum pernah mengajukan cuti."
                     : activeTab === "my-proposals" ? "Belum ada usulan yang dibuat untuk unit Anda."
+                    : activeTab === "create-letters" ? "Belum ada pengajuan yang siap dibuatkan surat keterangan."
                     : "Belum ada pegawai yang mengajukan cuti."}
                 </p>
+              </div>
+            ) : activeTab === "create-letters" ? (
+              <div className="space-y-5">
+                {letterProposalGroups.map((group) => {
+                  const totalEmployees = group.proposals.reduce((sum, proposal) => sum + (proposal.total_employees || 0), 0);
+                  return (
+                    <div key={group.dateKey} className="space-y-3">
+                      <div className="flex flex-col gap-2 rounded-lg border border-slate-600/50 bg-slate-700/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-white font-semibold">
+                            {format(new Date(group.date), "dd MMMM yyyy", { locale: id })}
+                          </h3>
+                          <p className="text-sm text-slate-400">
+                            {group.proposals.length} pengajuan siap dibuatkan surat
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">{totalEmployees} pegawai</Badge>
+                          <Badge className="bg-purple-500/20 text-purple-200 border border-purple-500/30">
+                            Siap surat
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {group.proposals.map((proposal) => (
+                          <ProposalCard
+                            key={proposal.id}
+                            proposal={proposal}
+                            isEmployee={isEmployee}
+                            isAdminUnit={isAdminUnit}
+                            activeTab={activeTab}
+                            onApprove={openApproveDialog}
+                            onReject={openRejectDialog}
+                            onForward={openForwardDialog}
+                            onPrint={handlePrintApprovedLetter}
+                            onCreateLetter={handleOpenBatchDialog}
+                            onEdit={(proposal) => {
+                              setEditingProposal(proposal);
+                              setShowCreateForm(true);
+                            }}
+                            onDelete={handleDeleteProposal}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="space-y-4">
@@ -817,77 +853,31 @@ const LeaveProposals = () => {
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
             <DialogTitle>Setujui Pengajuan Cuti</DialogTitle>
-            <DialogDescription className="text-slate-400">Pilih opsi persetujuan di bawah ini.</DialogDescription>
+            <DialogDescription className="text-slate-400">
+              Pengajuan yang disetujui akan masuk ke tab Buat Surat Keterangan untuk dibuat secara batch atau perorangan.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
-              <Label className="text-slate-300">Penandatangan Surat</Label>
-              {signers.length === 0 ? (
-                <p className="text-xs text-slate-400 mt-1">Belum ada penandatangan.</p>
-              ) : (
-                <select value={selectedSigner} onChange={e => setSelectedSigner(e.target.value)}
-                  className="w-full mt-1 bg-slate-700/50 border border-slate-600/50 rounded-md p-2 text-white focus:outline-none">
-                  {signers.map((s, i) => (
-                    <option key={i} value={s.name} className="bg-slate-800">{s.name} — {s.position_name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div>
-              <Label className="text-slate-300">Nomor Surat</Label>
-              <Input value={letterNumber} onChange={e => setLetterNumber(e.target.value)}
-                placeholder="SRT/CUTI/2026/001" className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
-            </div>
-            <div>
-              <Label className="text-slate-300">Tanggal Surat</Label>
-              <Input type="date" value={letterDate} onChange={e => setLetterDate(e.target.value)}
-                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
-            </div>
-            <div>
               <Label className="text-slate-300">Catatan (Opsional)</Label>
-              <Textarea value={approvalNotes} onChange={e => setApprovalNotes(e.target.value)}
-                rows={2} className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
+              <Textarea
+                value={approvalNotes}
+                onChange={e => setApprovalNotes(e.target.value)}
+                placeholder="Catatan persetujuan untuk pengajuan ini..."
+                rows={2}
+                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white"
+              />
             </div>
           </div>
-          <div className="flex justify-between pt-3 border-t border-slate-700/50">
-            <Button variant="outline" onClick={async () => {
-                try {
-                  toast({ title: "Menyiapkan dokumen...", description: "Mohon tunggu sebentar." });
-                  await downloadLeaveProposalLetter({
-                    proposal: {
-                      ...targetProposal,
-                      letter_number: letterNumber,
-                      letter_date: letterDate,
-                    },
-                    proposalItems: targetProposal.leave_proposal_items || [],
-                    organization: {
-                      name: currentUser?.department || "UNIT KERJA",
-                      department: currentUser?.department || "",
-                      address: "",
-                      city: "",
-                      phone: "",
-                      email: "",
-                    },
-                  });
-                } catch (err) {
-                  toast({ variant: "destructive", title: "Gagal Generate Surat", description: err.message });
-                }
-            }} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">
-              <Printer className="w-4 h-4 mr-2" /> Pratinjau Surat
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50">
+            <Button variant="outline" onClick={() => setShowApprovalDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
+            <Button onClick={handleApproveSubmit} disabled={submitting} className="bg-green-600 hover:bg-green-700">
+              <Check className="w-4 h-4 mr-2" />
+              {submitting ? "Memproses..." : "Setujui"}
             </Button>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowApprovalDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
-              <Button onClick={() => handleApproveSubmit("batch")} disabled={submitting} className="bg-purple-600 hover:bg-purple-700">
-                {submitting ? "Memproses..." : "Setujui & Buat Surat Nanti"}
-              </Button>
-              <Button onClick={() => handleApproveSubmit("issue_letter")} disabled={submitting || signers.length === 0} className="bg-green-600 hover:bg-green-700">
-                {submitting ? "Memproses..." : "Setujui & Terbitkan"}
-              </Button>
-            </div>
           </div>
         </DialogContent>
       </Dialog>
-
       {/* === Reject Dialog === */}
       <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
@@ -1048,7 +1038,7 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
   const isCreateLettersTab = isAdminUnit && activeTab === "create-letters";
   const canAct = isEmployeeApprovalTab && proposal.status === "pending";
   const canPrint = isEmployeeApprovalTab && proposal.status === "approved";
-  const canCreateLetter = isCreateLettersTab && proposal.status === "processed";
+  const canCreateLetter = isCreateLettersTab && ["approved", "processed"].includes(proposal.status);
   const canEditOrDelete = isEmployee && proposal.status === "rejected";
   const canDeleteByAdminUnit =
     isAdminUnit && ["pending", "rejected", "processed"].includes(proposal.status);
