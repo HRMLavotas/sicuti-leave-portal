@@ -91,7 +91,9 @@ export class SessionManager {
     }
 
     // Check if session is about to expire
-    const expiryTime = parseInt(localStorage.getItem("token_expiry"));
+    const expiryTime = AuthManager.getSessionExpiryMs(user);
+    if (!expiryTime) return;
+
     const timeToExpiry = expiryTime - now;
 
     // Show warning if session expires in 5 minutes
@@ -108,7 +110,7 @@ export class SessionManager {
     if (timeToExpiry <= SESSION_EXTEND_THRESHOLD && timeToExpiry > 0) {
       if (timeSinceActivity < 5 * 60 * 1000) {
         // User was active in last 5 minutes
-        this.extendSession();
+        await this.extendSession();
       }
     }
 
@@ -130,6 +132,13 @@ export class SessionManager {
   static async handleSessionExpiry() {
     const user = AuthManager.getUserSession();
 
+    try {
+      await AuthManager.ensureFreshSsoSession({ force: true });
+      return;
+    } catch {
+      // Refresh token sudah tidak valid, lanjutkan logout normal.
+    }
+
     AuditLogger.log(AUDIT_EVENTS.SESSION_EXPIRED, {
       reason: "token_expired",
       userId: user?.id,
@@ -142,11 +151,9 @@ export class SessionManager {
     this.showSessionExpiredModal();
   }
 
-  static extendSession() {
-    const newExpiryTime = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-    localStorage.setItem("token_expiry", newExpiryTime.toString());
-
-    console.log("Session extended for 24 hours");
+  static async extendSession() {
+    await AuthManager.ensureFreshSsoSession({ force: true });
+    console.log("Session refreshed from SIMPEL");
   }
 
   static showSessionWarning(minutesLeft) {
@@ -215,13 +222,13 @@ export class SessionManager {
       return null;
     }
 
-    const expiryTime = parseInt(localStorage.getItem("token_expiry"));
+    const expiryTime = AuthManager.getSessionExpiryMs();
     const now = Date.now();
 
     return {
       isActive: true,
-      expiresAt: new Date(expiryTime),
-      timeLeft: Math.max(0, expiryTime - now),
+      expiresAt: expiryTime ? new Date(expiryTime) : null,
+      timeLeft: expiryTime ? Math.max(0, expiryTime - now) : null,
       lastActivity: new Date(this.lastActivity),
       timeSinceActivity: now - this.lastActivity,
     };

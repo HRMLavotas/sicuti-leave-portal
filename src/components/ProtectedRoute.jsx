@@ -12,8 +12,13 @@ const ProtectedRoute = ({ children }) => {
     let cancelled = false;
 
     const checkAuth = async () => {
-      // Refresh dari Supabase jika ada, update cache
-      await AuthManager.refreshUserSession();
+      try {
+        // Refresh dari Supabase/SIMPEL jika ada, update cache
+        await AuthManager.refreshUserSession();
+      } catch (error) {
+        console.warn("[ProtectedRoute] Session refresh failed:", error?.message || error);
+        AuthManager.clearSession();
+      }
 
       if (cancelled) return;
 

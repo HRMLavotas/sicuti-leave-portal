@@ -21,6 +21,20 @@ function extractNip(email, profileNip) {
   return match ? match[1] : null;
 }
 
+function getTokenExpirySeconds(token) {
+  const [, payload] = String(token || "").split(".");
+  if (!payload) return 0;
+
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    const decoded = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+    return typeof decoded.exp === "number" ? decoded.exp : 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function redeemCode(code) {
   const simpelUrl = process.env.SIMPEL_URL;
   const sharedSecret = process.env.SSO_SHARED_SECRET;
@@ -199,7 +213,7 @@ export async function exchangeSsoCredentials(body) {
     session: {
       access_token:  simpelAccessToken,
       refresh_token: simpelRefreshToken,
-      expires_at:    0,
+      expires_at:    getTokenExpirySeconds(simpelAccessToken),
     },
     provider: "simpel",
   };

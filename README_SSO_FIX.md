@@ -42,3 +42,37 @@ Buka **SQL Editor** di proyek Supabase SiCuti, lalu jalankan 2 script berikut **
 
 ## 6. Penting: Data Aman!
 Semua data riwayat cuti, saldo cuti, dan data lainnya **tidak akan hilang**! Kita hanya memperbaiki alur SSO dan menonaktifkan RLS saja!
+
+## 7. Refresh JWT SIMPEL di SiCuti
+
+Per 26 Juni 2026, SiCuti memiliki refresh session otomatis untuk mencegah error `JWT expired` saat user sudah lama membuka aplikasi.
+
+Alurnya:
+
+```
+AuthManager membaca exp dari JWT SIMPEL
+ → jika token hampir expired, client memanggil /api/auth-refresh
+ → server SiCuti refresh session ke Supabase SIMPEL memakai refresh_token
+ → server mengulang enrichment user/role/employee dari SIMPEL
+ → client menyimpan access_token, refresh_token, dan token_expiry terbaru
+ → query SIMPEL berikutnya memakai token baru
+```
+
+File terkait:
+
+- `api/auth-refresh.js`
+- `api/_lib/ssoExchange.js`
+- `src/lib/auth.js`
+- `src/lib/simpelClient.js`
+- `src/lib/sessionManager.js`
+- `src/components/ProtectedRoute.jsx`
+
+Environment server yang wajib tersedia sama seperti SSO awal:
+
+- `SIMPEL_URL`
+- `SIMPEL_ANON_KEY`
+- `SIMPEL_SERVICE_ROLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SSO_SHARED_SECRET`
+
+Catatan penting: jangan memperpanjang session hanya dengan mengubah `localStorage.token_expiry`. JWT asli tetap akan expired. Perpanjangan harus melalui `/api/auth-refresh`.

@@ -1,6 +1,38 @@
 import { supabase } from "./supabaseClient";
 import { AuditLogger, AUDIT_EVENTS } from "./auditLogger";
 
+const SSO_REFRESH_SKEW_MS = 2 * 60 * 1000;
+const SSO_REFRESH_STORAGE_KEY = "sso_last_refresh_attempt";
+
+function decodeJwtPayload(token) {
+  if (!token || typeof token !== "string") return null;
+  const [, payload] = token.split(".");
+  if (!payload) return null;
+
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function getExpiryMsFromToken(token) {
+  const exp = decodeJwtPayload(token)?.exp;
+  return typeof exp === "number" ? exp * 1000 : null;
+}
+
+function isJwtExpiredError(error) {
+  const message = String(error?.message || error?.error_description || error || "").toLowerCase();
+  return (
+    message.includes("jwt expired") ||
+    message.includes("token expired") ||
+    message.includes("invalid jwt") ||
+    message.includes("refresh token")
+  );
+}
+
 /**
  * AuthManager — integrasi dengan Supabase Auth session (RLS-aware)
  *
@@ -44,11 +76,16 @@ export class AuthManager {
    * Digunakan untuk SSO dari SIMPEL, simpan user ke localStorage tanpa Supabase Auth
    */
   static async establishSsoSession({ user, session, simpel_session }) {
+    const accessToken = simpel_session?.access_token || session?.access_token;
+    const refreshToken = simpel_session?.refresh_token || session?.refresh_token;
+    const tokenExpiryMs = getExpiryMsFromToken(accessToken);
+
     this.setSsoSession({
       ...user,
       permissions: user.permissions || [],
-      access_token: simpel_session?.access_token,
-      refresh_token: simpel_session?.refresh_token,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: session?.expires_at || (tokenExpiryMs ? Math.floor(tokenExpiryMs / 1000) : 0),
       last_login: new Date().toISOString(),
     });
   }
@@ -58,7 +95,22 @@ export class AuthManager {
    */
   static setSsoSession(user) {
     try {
-      localStorage.setItem("user_data", JSON.stringify(user));
+      const expiryMs =
+        user?.expires_at && Number(user.expires_at) > 0
+          ? Number(user.expires_at) * 1000
+          : getExpiryMsFromToken(user?.access_token);
+
+      const normalizedUser = {
+        ...user,
+        expires_at: expiryMs ? Math.floor(expiryMs / 1000) : user?.expires_at || 0,
+      };
+
+      localStorage.setItem("user_data", JSON.stringify(normalizedUser));
+      if (expiryMs) {
+        localStorage.setItem("token_expiry", String(expiryMs));
+      } else {
+        localStorage.removeItem("token_expiry");
+      }
     } catch (error) {
       console.error("Failed to set SSO session:", error);
       throw new Error("Failed to save login session");
@@ -89,6 +141,8 @@ export class AuthManager {
   }
 
   static async refreshUserSession() {
+    await this.ensureFreshSsoSession();
+
     // Cek Supabase Auth session (untuk user yang login via Supabase native)
     const { data } = await supabase.auth.getSession();
     const user = this.mapUserFromSession(data.session);
@@ -102,8 +156,72 @@ export class AuthManager {
     return this.getUserSession();
   }
 
+  static getSessionExpiryMs(user = this.getUserSession()) {
+    if (!user) return null;
+
+    const storedExpiry = Number(localStorage.getItem("token_expiry"));
+    if (Number.isFinite(storedExpiry) && storedExpiry > 0) return storedExpiry;
+
+    const expiryMs =
+      user.expires_at && Number(user.expires_at) > 0
+        ? Number(user.expires_at) * 1000
+        : getExpiryMsFromToken(user.access_token);
+
+    if (expiryMs) {
+      localStorage.setItem("token_expiry", String(expiryMs));
+    }
+    return expiryMs || null;
+  }
+
+  static isAuthTokenError(error) {
+    return isJwtExpiredError(error);
+  }
+
+  static async ensureFreshSsoSession({ force = false } = {}) {
+    const user = this.getUserSession();
+    if (!user?.refresh_token) return user;
+
+    const expiryMs = this.getSessionExpiryMs(user);
+    const shouldRefresh = force || !expiryMs || expiryMs - Date.now() <= SSO_REFRESH_SKEW_MS;
+    if (!shouldRefresh) return user;
+
+    const lastAttempt = Number(localStorage.getItem(SSO_REFRESH_STORAGE_KEY) || 0);
+    if (!force && lastAttempt && Date.now() - lastAttempt < 30 * 1000) {
+      return user;
+    }
+
+    localStorage.setItem(SSO_REFRESH_STORAGE_KEY, String(Date.now()));
+
+    const res = await fetch("/api/auth-refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: user.refresh_token }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      throw new Error(data.error || "Gagal memperbarui sesi SSO");
+    }
+
+    const refreshedUser = {
+      ...user,
+      ...(data.user || {}),
+      access_token: data.session?.access_token,
+      refresh_token: data.session?.refresh_token || user.refresh_token,
+      expires_at: data.session?.expires_at || 0,
+      permissions: data.user?.permissions || user.permissions || [],
+      last_login: user.last_login || new Date().toISOString(),
+      last_refresh: new Date().toISOString(),
+    };
+
+    this.setSsoSession(refreshedUser);
+    return refreshedUser;
+  }
+
   static clearSession() {
     localStorage.removeItem("user_data");
+    localStorage.removeItem("token_expiry");
+    localStorage.removeItem(SSO_REFRESH_STORAGE_KEY);
   }
 
   static isAuthenticated() {

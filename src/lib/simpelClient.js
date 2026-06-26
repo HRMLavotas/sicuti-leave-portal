@@ -13,8 +13,9 @@ const SIMPEL_ANON_KEY = import.meta.env.VITE_SIMPEL_ANON_KEY;
 
 let _cachedToken = null;
 
-function getSimpelClient() {
-  const token = AuthManager.getUserSession()?.access_token;
+async function getSimpelClient() {
+  const session = await AuthManager.ensureFreshSsoSession();
+  const token = session?.access_token || AuthManager.getUserSession()?.access_token;
   if (!token) {
     throw new Error("Sesi tidak aktif. Silakan login ulang melalui SIPANDAI.");
   }
@@ -169,8 +170,8 @@ class SimpelQueryBuilder {
   }
 
   async execute() {
-    try {
-      const client = getSimpelClient();
+    const runQuery = async () => {
+      const client = await getSimpelClient();
       let query;
 
       if (this._action === "select") {
@@ -209,7 +210,24 @@ class SimpelQueryBuilder {
       else                    result = await query;
 
       return { data: result.data, error: result.error, count: result.count ?? null };
+    };
+
+    try {
+      const result = await runQuery();
+      if (result.error && AuthManager.isAuthTokenError(result.error)) {
+        await AuthManager.ensureFreshSsoSession({ force: true });
+        return await runQuery();
+      }
+      return result;
     } catch (err) {
+      if (AuthManager.isAuthTokenError(err)) {
+        try {
+          await AuthManager.ensureFreshSsoSession({ force: true });
+          return await runQuery();
+        } catch (retryErr) {
+          return { data: null, error: retryErr, count: null };
+        }
+      }
       return { data: null, error: err, count: null };
     }
   }
