@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   FileText, Plus, CheckCircle, XCircle, Clock, User,
   Check, Forward, Printer, ChevronDown, Edit, Trash2,
+  Eye, Download, Layers, Building2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -20,6 +22,9 @@ import useLeaveProposals from "@/hooks/useLeaveProposals";
 import LeaveProposalForm from "@/components/leave_proposals/LeaveProposalForm";
 import EmployeeLeaveRequestForm from "@/components/leave_proposals/EmployeeLeaveRequestForm";
 import { downloadLeaveProposalLetter } from "@/utils/leaveProposalLetterGenerator";
+import { processDocxTemplate } from "@/utils/docxTemplates";
+import { saveAs } from "file-saver";
+import { useTemplates } from "@/hooks/useTemplates";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import {
@@ -32,6 +37,7 @@ const STATUS_CONFIG = {
   rejected:  { label: "Ditolak",      color: "bg-red-500/20 text-red-300 border-red-500/30",         icon: XCircle },
   forwarded: { label: "Diteruskan ke Admin Pusat", color: "bg-blue-500/20 text-blue-300 border-blue-500/30", icon: Forward },
   processed: { label: "Diproses",     color: "bg-slate-500/20 text-slate-300 border-slate-500/30",   icon: FileText },
+  approved_for_letter: { label: "Siap Buat Surat", color: "bg-purple-500/20 text-purple-300 border-purple-500/30", icon: FileText },
 };
 
 function StatusBadge({ status }) {
@@ -45,6 +51,58 @@ function StatusBadge({ status }) {
   );
 }
 
+// Convert number to Indonesian words
+const numberToWords = (num) => {
+  if (num === 0) return "nol";
+
+  const ones = [
+    "",
+    "satu",
+    "dua",
+    "tiga",
+    "empat",
+    "lima",
+    "enam",
+    "tujuh",
+    "delapan",
+    "sembilan",
+  ];
+  const teens = [
+    "sepuluh",
+    "sebelas",
+    "dua belas",
+    "tiga belas",
+    "empat belas",
+    "lima belas",
+    "enam belas",
+    "tujuh belas",
+    "delapan belas",
+    "sembilan belas",
+  ];
+  const tens = [
+    "",
+    "",
+    "dua puluh",
+    "tiga puluh",
+    "empat puluh",
+    "lima puluh",
+    "enam puluh",
+    "tujuh puluh",
+    "delapan puluh",
+    "sembilan puluh",
+  ];
+
+  if (num < 10) return ones[num];
+  if (num < 20) return teens[num - 10];
+  if (num < 100) {
+    const ten = Math.floor(num / 10);
+    const one = num % 10;
+    return tens[ten] + (one > 0 ? " " + ones[one] : "");
+  }
+
+  return num.toString(); // For larger numbers, just return the number
+};
+
 const LeaveProposals = () => {
   const { toast } = useToast();
   const currentUser = AuthManager.getUserSession();
@@ -56,6 +114,9 @@ const LeaveProposals = () => {
     approveEmployeeProposal, rejectEmployeeProposal, forwardToAdminPusat,
     deleteProposal, updateProposal,
   } = useLeaveProposals();
+
+  // Templates hook
+  const { templates: availableTemplates, isLoading: loadingTemplates } = useTemplates({ autoFetch: true });
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [editingProposal, setEditingProposal] = useState(null);
@@ -70,7 +131,13 @@ const LeaveProposals = () => {
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [showRejectDialog, setShowRejectDialog]   = useState(false);
   const [showForwardDialog, setShowForwardDialog] = useState(false);
+  const [showBatchDialog, setShowBatchDialog] = useState(false);
   const [targetProposal, setTargetProposal] = useState(null);
+  const [selectedProposalForBatch, setSelectedProposalForBatch] = useState(null);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [selectedEmployeeForLetter, setSelectedEmployeeForLetter] = useState({}); // { [leaveType]: requestId | 'all' }
+  const [leaveTypeClassification, setLeaveTypeClassification] = useState({});
+  const [generatingLetter, setGeneratingLetter] = useState(false);
 
   const [letterNumber, setLetterNumber] = useState("");
   const [letterDate, setLetterDate]     = useState(format(new Date(), "yyyy-MM-dd"));
@@ -188,7 +255,7 @@ const LeaveProposals = () => {
   const openRejectDialog  = (proposal) => { setTargetProposal(proposal); setRejectionReason(""); setShowRejectDialog(true); };
   const openForwardDialog = (proposal) => { setTargetProposal(proposal); setForwardNote(""); setShowForwardDialog(true); };
 
-  const handleApproveSubmit = async () => {
+  const handleApproveSubmit = async (approvalType) => {
     if (!selectedSigner) {
       toast({ title: "Peringatan", description: "Silakan pilih penandatangan terlebih dahulu.", variant: "destructive" });
       return;
@@ -200,7 +267,7 @@ const LeaveProposals = () => {
         letter_date: letterDate,
         signed_by: selectedSigner,
         notes: approvalNotes,
-      });
+      }, approvalType);
       setShowApprovalDialog(false);
       setTargetProposal(null);
     } catch { /* handled by hook */ }
@@ -255,10 +322,359 @@ const LeaveProposals = () => {
     }
   };
 
+  const handleOpenBatchDialog = (proposal) => {
+    setSelectedProposalForBatch(proposal);
+    
+    // First, analyze and group leave requests by type
+    const leaveTypeGroups = {};
+    proposal.leave_proposal_items.forEach(item => {
+      const leaveType = item.leave_type_name || "Jenis cuti tidak diketahui";
+      if (!leaveTypeGroups[leaveType]) {
+        leaveTypeGroups[leaveType] = [];
+      }
+      leaveTypeGroups[leaveType].push({
+        id: item.id,
+        employee_id: item.employee_id,
+        employee_name: item.employee_name,
+        employee_nip: item.employee_nip,
+        employee_position: item.employee_position,
+        leave_type_name: item.leave_type_name,
+        leave_type_id: item.leave_type_id,
+        start_date: item.start_date,
+        end_date: item.end_date,
+        days_requested: item.days_requested,
+        reason: item.reason,
+        address_during_leave: item.address_during_leave,
+        leave_quota_year: item.leave_quota_year,
+        application_form_date: item.application_form_date,
+      });
+    });
+
+    setLeaveTypeClassification(leaveTypeGroups);
+    
+    // Default: semua jenis cuti mode batch (all)
+    const defaultSelection = {};
+    Object.keys(leaveTypeGroups).forEach(lt => {
+      defaultSelection[lt] = 'all';
+    });
+    setSelectedEmployeeForLetter(defaultSelection);
+    
+    setShowBatchDialog(true);
+  };
+
+  const handleGenerateBatchLetter = async (leaveType, items, templateId = null, individualItemId = null) => {
+    try {
+      setGeneratingLetter(true);
+
+      // Check if we have a template
+      if (!templateId && availableTemplates.length === 0) {
+        toast({
+          title: "Template Tidak Tersedia",
+          description: "Tidak ada template DOCX yang tersedia. Periksa koneksi atau buat template terlebih dahulu.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Use the first template if no specific template is selected
+      const template = templateId
+        ? availableTemplates.find(t => t.id === templateId)
+        : availableTemplates[0];
+
+      if (!template) {
+        toast({
+          title: "Template Tidak Ditemukan",
+          description: "Template yang dipilih tidak ditemukan.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate template has content
+      if (!template.content && !template.template_data) {
+        toast({
+          title: "Template Tidak Valid",
+          description: "Template tidak memiliki konten. Coba upload ulang template.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Info",
+        description: `Sedang mempersiapkan surat batch untuk ${leaveType}...`,
+      });
+
+      // Use complete data for variables — filter to single employee if perorangan mode
+      let completeItems = items;
+      if (individualItemId && individualItemId !== 'all') {
+        completeItems = items.filter(item => item.id === individualItemId);
+        if (completeItems.length === 0) {
+          // Fallback: search in original items array
+          const found = items.find(item => item.id === individualItemId);
+          if (found) completeItems = [found];
+        }
+      }
+
+      // Prepare variables for template with complete data
+      const variables = {
+        // General information
+        unit_kerja: currentUser?.department || "UNIT KERJA",
+        jenis_cuti: leaveType,
+        tanggal_usulan: format(new Date(selectedProposalForBatch.created_at), "dd MMMM yyyy", { locale: id }),
+        tanggal_surat: format(new Date(), "dd MMMM yyyy", { locale: id }),
+        jumlah_pegawai: completeItems.length,
+        total_hari: completeItems.reduce((sum, item) => sum + (item.days_requested || 0), 0),
+        tahun: new Date().getFullYear(),
+        bulan: format(new Date(), "MMMM", { locale: id }),
+        kota: "Jayapura", // Default city, can be configurable
+
+        // Letter numbering
+        nomor_surat: selectedProposalForBatch.letter_number || `SRT/${leaveType.toUpperCase().replace(/\s+/g, '')}/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+
+        // Missing variables that user reported as empty - FIXED
+        tanggal_pelaksanaan_cuti: completeItems.length > 0
+          ? `${format(new Date(completeItems[0].start_date), "dd MMMM yyyy", { locale: id })} s.d. ${format(new Date(completeItems[completeItems.length - 1].end_date), "dd MMMM yyyy", { locale: id })}`
+          : "-",
+        lamanya_cuti: `${completeItems.reduce((sum, item) => sum + (item.days_requested || 0), 0)} hari`,
+        cuti_tahun: completeItems.length > 0 ? (completeItems[0].leave_quota_year || new Date().getFullYear()) : new Date().getFullYear(),
+        alamat_cuti: completeItems.length > 0 ? (completeItems[0].address_during_leave || "-") : "-",
+        formulir_pengajuan_cuti: completeItems.length > 0 && completeItems[0].application_form_date
+          ? format(new Date(completeItems[0].application_form_date), "dd MMMM yyyy", { locale: id })
+          : format(new Date(selectedProposalForBatch.created_at), "dd MMMM yyyy", { locale: id }),
+
+        // USER REPORTED MISSING VARIABLES - ADDED:
+        tanggal_formulir_pengajuan: completeItems.length > 0 && completeItems[0].application_form_date
+          ? format(new Date(completeItems[0].application_form_date), "dd MMMM yyyy", { locale: id })
+          : format(new Date(selectedProposalForBatch.created_at), "dd MMMM yyyy", { locale: id }),
+        tanggal_cuti: completeItems.length > 0
+          ? `${format(new Date(completeItems[0].start_date), "dd MMMM yyyy", { locale: id })} s.d. ${format(new Date(completeItems[completeItems.length - 1].end_date), "dd MMMM yyyy", { locale: id })}`
+          : "-",
+        jatah_cuti_tahun: completeItems.length > 0 ? (completeItems[0].leave_quota_year || new Date().getFullYear()) : new Date().getFullYear(),
+
+        // Additional common template variables
+        departemen: currentUser?.department || "UNIT KERJA",
+        instansi: "Pemerintah Kota Jayapura", // Can be made configurable
+        nama_kepala_instansi: "Kepala Dinas", // Can be made configurable
+        jabatan_kepala_instansi: "Kepala Dinas", // Can be made configurable
+
+        // Additional comprehensive variables for complete coverage
+        total_pegawai_asn: completeItems.length,
+        total_pegawai_non_asn: 0,
+        rata_rata_hari_cuti: completeItems.length > 0 ? Math.round(completeItems.reduce((sum, item) => sum + (item.days_requested || 0), 0) / completeItems.length) : 0,
+
+        // ---------------------------------------------------------------
+        // Variabel flat individu dari pegawai pertama (digunakan oleh
+        // template yang hanya punya {nama}, {nip}, {jabatan}, dsb.)
+        // Pada mode batch, ini berisi data pegawai pertama.
+        // Pada mode perorangan, ini berisi data pegawai yang dipilih.
+        // ---------------------------------------------------------------
+        nama: completeItems[0]?.employee_name || "-",
+        nama_pegawai: completeItems[0]?.employee_name || "-",
+        nip: completeItems[0]?.employee_nip || "-",
+        jabatan: completeItems[0]?.employee_position || "-",
+        pangkat_golongan: "-",
+        status_asn: "ASN",
+        tanggal_mulai: completeItems[0]?.start_date ? format(new Date(completeItems[0].start_date), "dd/MM/yyyy") : "-",
+        tanggal_selesai: completeItems[0]?.end_date ? format(new Date(completeItems[0].end_date), "dd/MM/yyyy") : "-",
+        tanggal_mulai_lengkap: completeItems[0]?.start_date ? format(new Date(completeItems[0].start_date), "dd MMMM yyyy", { locale: id }) : "-",
+        tanggal_selesai_lengkap: completeItems[0]?.end_date ? format(new Date(completeItems[0].end_date), "dd MMMM yyyy", { locale: id }) : "-",
+        jumlah_hari: completeItems[0]?.days_requested || 0,
+        lama_cuti: `${completeItems[0]?.days_requested || 0} hari`,
+        alasan: completeItems[0]?.reason || "-",
+        alamat_selama_cuti: completeItems[0]?.address_during_leave || "-",
+        tempat_alamat_cuti: completeItems[0]?.address_during_leave || "-",
+        periode_cuti: completeItems[0]?.start_date && completeItems[0]?.end_date
+          ? `${format(new Date(completeItems[0].start_date), "dd/MM/yyyy")} - ${format(new Date(completeItems[0].end_date), "dd/MM/yyyy")}`
+          : "-",
+        durasi_hari_terbilang: numberToWords(completeItems[0]?.days_requested || 0),
+        // Variabel atasan (umumnya di template individu)
+        nama_atasan: "-",
+        nip_atasan: "-",
+        jabatan_atasan: "-",
+
+        // Employee list variables for table/loop processing
+        pegawai_list: completeItems.map((item, index) => ({
+          no: index + 1,
+          nama: item.employee_name || "Nama tidak diketahui",
+          nama_pegawai: item.employee_name || "Nama tidak diketahui",
+          nip: item.employee_nip || "-",
+          jabatan: item.employee_position || "-",
+          departemen: currentUser?.department || "UNIT KERJA",
+          unit_kerja: currentUser?.department || "UNIT KERJA",
+          pangkat_golongan: "-",
+          status_asn: "ASN",
+          jenis_cuti: item.leave_type_name || leaveType,
+          tanggal_mulai: format(new Date(item.start_date), "dd/MM/yyyy"),
+          tanggal_selesai: format(new Date(item.end_date), "dd/MM/yyyy"),
+          tanggal_mulai_lengkap: format(new Date(item.start_date), "dd MMMM yyyy", { locale: id }),
+          tanggal_selesai_lengkap: format(new Date(item.end_date), "dd MMMM yyyy", { locale: id }),
+          tanggal_pelaksanaan_cuti: `${format(new Date(item.start_date), "dd MMMM yyyy", { locale: id })} s.d. ${format(new Date(item.end_date), "dd MMMM yyyy", { locale: id })}`,
+          periode_cuti: `${format(new Date(item.start_date), "dd/MM/yyyy")} - ${format(new Date(item.end_date), "dd/MM/yyyy")}`,
+          jumlah_hari: item.days_requested || 0,
+          lama_cuti: `${item.days_requested || 0} hari`,
+          lamanya_cuti: `${item.days_requested || 0} hari`,
+          alasan: item.reason || "-",
+          alamat_cuti: item.address_during_leave || "-",
+          alamat_selama_cuti: item.address_during_leave || "-",
+          tempat_alamat_cuti: item.address_during_leave || "-",
+          tahun_quota: item.leave_quota_year || new Date().getFullYear(),
+          cuti_tahun: item.leave_quota_year || new Date().getFullYear(),
+          tanggal_formulir: item.application_form_date ? format(new Date(item.application_form_date), "dd MMMM yyyy", { locale: id }) : "-",
+          formulir_pengajuan_cuti: item.application_form_date ? format(new Date(item.application_form_date), "dd MMMM yyyy", { locale: id }) : "-",
+          nomor_surat_cuti: selectedProposalForBatch.letter_number || "-",
+          tanggal_surat_cuti: selectedProposalForBatch.letter_date ? format(new Date(selectedProposalForBatch.letter_date), "dd MMMM yyyy", { locale: id }) : "-",
+          // Additional comprehensive variables
+          durasi_hari_terbilang: numberToWords(item.days_requested || 0),
+          nomor_surat_referensi: selectedProposalForBatch.id || "-"
+        }))
+      };
+
+      // Create indexed variables for template loops with complete data
+      completeItems.forEach((item, index) => {
+        const num = index + 1;
+        variables[`nama_${num}`] = item.employee_name || "Nama tidak diketahui";
+        variables[`nip_${num}`] = item.employee_nip || "-";
+        variables[`jabatan_${num}`] = item.employee_position || "-";
+        variables[`pangkat_golongan_${num}`] = "-";
+        variables[`departemen_${num}`] = currentUser?.department || "UNIT KERJA";
+        variables[`unit_kerja_${num}`] = currentUser?.department || "UNIT KERJA";
+        variables[`jenis_cuti_${num}`] = item.leave_type_name || leaveType;
+        variables[`tanggal_mulai_${num}`] = format(new Date(item.start_date), "dd/MM/yyyy");
+        variables[`tanggal_selesai_${num}`] = format(new Date(item.end_date), "dd/MM/yyyy");
+        variables[`tanggal_mulai_lengkap_${num}`] = format(new Date(item.start_date), "dd MMMM yyyy", { locale: id });
+        variables[`tanggal_selesai_lengkap_${num}`] = format(new Date(item.end_date), "dd MMMM yyyy", { locale: id });
+        variables[`tanggal_pelaksanaan_cuti_${num}`] = `${format(new Date(item.start_date), "dd MMMM yyyy", { locale: id })} s.d. ${format(new Date(item.end_date), "dd MMMM yyyy", { locale: id })}`;
+        variables[`jumlah_hari_${num}`] = item.days_requested || 0;
+        variables[`lama_cuti_${num}`] = `${item.days_requested || 0} hari`;
+        variables[`lamanya_cuti_${num}`] = `${item.days_requested || 0} hari`;
+        variables[`alasan_${num}`] = item.reason || "-";
+        variables[`alamat_cuti_${num}`] = item.address_during_leave || "-";
+        variables[`alamat_selama_cuti_${num}`] = item.address_during_leave || "-";
+        variables[`tahun_quota_${num}`] = item.leave_quota_year || new Date().getFullYear();
+        variables[`cuti_tahun_${num}`] = item.leave_quota_year || new Date().getFullYear();
+        variables[`tanggal_formulir_${num}`] = item.application_form_date ? format(new Date(item.application_form_date), "dd MMMM yyyy", { locale: id }) : "-";
+        variables[`formulir_pengajuan_cuti_${num}`] = item.application_form_date ? format(new Date(item.application_form_date), "dd MMMM yyyy", { locale: id }) : "-";
+
+        // USER REPORTED MISSING VARIABLES - ADDED FOR INDEXED:
+        variables[`tanggal_formulir_pengajuan_${num}`] = item.application_form_date ? format(new Date(item.application_form_date), "dd MMMM yyyy", { locale: id }) : "-";
+        variables[`tanggal_cuti_${num}`] = `${format(new Date(item.start_date), "dd MMMM yyyy", { locale: id })} s.d. ${format(new Date(item.end_date), "dd MMMM yyyy", { locale: id })}`;
+        variables[`jatah_cuti_tahun_${num}`] = item.leave_quota_year || new Date().getFullYear();
+
+        // Additional variations for common template patterns
+        variables[`nama_pegawai_${num}`] = item.employee_name || "Nama tidak diketahui";
+        variables[`tempat_alamat_cuti_${num}`] = item.address_during_leave || "-";
+        variables[`periode_cuti_${num}`] = `${format(new Date(item.start_date), "dd/MM/yyyy")} - ${format(new Date(item.end_date), "dd/MM/yyyy")}`;
+        // Additional indexed variables for complete coverage
+        variables[`durasi_hari_terbilang_${num}`] = numberToWords(item.days_requested || 0);
+        variables[`nomor_surat_referensi_${num}`] = selectedProposalForBatch.id || "-";
+        variables[`status_asn_${num}`] = "ASN";
+      });
+
+      // =====================================================================
+      // BRIDGE MAPPING: Sinkronisasi variabel flat ↔ bertingkat
+      //
+      // Tujuan: template yang menggunakan {nama} (individu) akan tetap
+      // terisi meskipun pembuatan surat batch; dan template yang menggunakan
+      // {nama_1} (batch) akan tetap terisi meskipun mode perorangan.
+      // =====================================================================
+
+      // Daftar nama variabel per-pegawai yang perlu di-bridge
+      const EMPLOYEE_VAR_KEYS = [
+        'nama', 'nama_pegawai', 'nip', 'jabatan', 'pangkat_golongan',
+        'departemen', 'unit_kerja', 'jenis_cuti',
+        'tanggal_mulai', 'tanggal_selesai', 'tanggal_mulai_lengkap',
+        'tanggal_selesai_lengkap', 'tanggal_pelaksanaan_cuti', 'tanggal_cuti',
+        'jumlah_hari', 'lama_cuti', 'lamanya_cuti',
+        'alasan', 'alamat_cuti', 'alamat_selama_cuti', 'tempat_alamat_cuti',
+        'tahun_quota', 'cuti_tahun', 'jatah_cuti_tahun',
+        'tanggal_formulir', 'tanggal_formulir_pengajuan', 'formulir_pengajuan_cuti',
+        'periode_cuti', 'durasi_hari_terbilang', 'nomor_surat_referensi',
+        'status_asn', 'nama_atasan', 'nip_atasan', 'jabatan_atasan',
+      ];
+
+      // 1. Dari variabel _1 → isi variabel flat (jika flat belum ada atau kosong)
+      //    Berguna agar template individu ({nama}) terisi dari data indexed pertama
+      EMPLOYEE_VAR_KEYS.forEach((key) => {
+        const indexedVal = variables[`${key}_1`];
+        if (indexedVal !== undefined && indexedVal !== null) {
+          if (variables[key] === undefined || variables[key] === null || variables[key] === '') {
+            variables[key] = indexedVal;
+          }
+        }
+      });
+
+      // 2. Dari variabel flat → isi _1, _2, dst. jika kosong
+      //    Berguna agar template batch ({nama_1}) terisi dari variabel flat
+      //    terutama pada mode individu di mana hanya ada 1 pegawai
+      EMPLOYEE_VAR_KEYS.forEach((key) => {
+        const flatVal = variables[key];
+        if (flatVal !== undefined && flatVal !== null) {
+          // Pastikan _1 selalu terisi
+          if (variables[`${key}_1`] === undefined || variables[`${key}_1`] === null || variables[`${key}_1`] === '') {
+            variables[`${key}_1`] = flatVal;
+          }
+        }
+      });
+
+      // 3. Khusus mode perorangan: tambahkan alias variabel bertingkat _1 hingga _5
+      //    agar template dengan {nama_1}, {nip_1} dsb. tetap terisi walaupun hanya 1 pegawai
+      const _isIndividualMode = individualItemId && individualItemId !== 'all';
+      if (_isIndividualMode && completeItems.length === 1) {
+        // _1 sudah dihandle di atas, tambahkan _2 - _5 sebagai empty string agar tidak error
+        for (let n = 2; n <= 5; n++) {
+          EMPLOYEE_VAR_KEYS.forEach((key) => {
+            if (variables[`${key}_${n}`] === undefined) {
+              variables[`${key}_${n}`] = '';
+            }
+          });
+        }
+      }
+
+      console.log("Bridge mapping selesai. Contoh variabel individu:");
+      console.log("  nama:", variables.nama);
+      console.log("  nip:", variables.nip);
+      console.log("  jabatan:", variables.jabatan);
+
+      // Generate the document
+      const blob = await processDocxTemplate(template, variables);
+      
+      // Create filename
+      const filename = `${leaveType.toUpperCase().replace(/\s+/g, '_')}_${format(new Date(), 'yyyyMMdd')}.docx`;
+      
+      // Download the file
+      saveAs(blob, filename);
+      
+      toast({
+        title: "Berhasil",
+        description: `Surat ${leaveType} berhasil di-generate dan diunduh!`,
+      });
+      
+    } catch (error) {
+      console.error("Error generating batch letter:", error);
+      toast({
+        title: "Gagal Generate Surat",
+        description: "Terjadi kesalahan saat membuat surat: " + safeErrorMessage(error),
+        variant: "destructive",
+      });
+    } finally {
+      setGeneratingLetter(false);
+    }
+  };
+
+  // Helper for safe error message
+  const safeErrorMessage = (error) => {
+    if (typeof error === 'string') return error;
+    if (error?.message) return error.message;
+    if (error?.error_description) return error.error_description;
+    return String(error);
+  };
+
   // Filter proposals for display
   const displayProposals = proposals.filter((p) => {
     if (isEmployee) return p.proposed_by === currentUser.id;
     if (activeTab === "my-proposals") return p.proposed_by === currentUser.id;
+    if (activeTab === "create-letters") return p.status === "approved_for_letter";
     // employee-approvals: proposals from employees in this unit (not created by admin themselves)
     return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department;
   });
@@ -266,6 +682,7 @@ const LeaveProposals = () => {
   const pendingEmployeeCount = proposals.filter(
     p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending'
   ).length;
+  const readyForLettersCount = proposals.filter(p => p.status === 'approved_for_letter').length;
 
   if (showCreateForm) {
     return (
@@ -351,6 +768,7 @@ const LeaveProposals = () => {
           {[
             { key: "my-proposals", label: "Usulan Unit (ke Admin Pusat)" },
             { key: "employee-approvals", label: "Persetujuan Cuti Pegawai", badge: pendingEmployeeCount },
+            { key: "create-letters", label: "Buat Surat Keterangan", badge: readyForLettersCount },
           ].map(tab => (
             <button
               key={tab.key}
@@ -359,7 +777,7 @@ const LeaveProposals = () => {
             >
               {tab.label}
               {tab.badge > 0 && (
-                <span className="bg-yellow-500 text-slate-900 w-5 h-5 rounded-full text-xs flex items-center justify-center">{tab.badge}</span>
+                <span className="bg-purple-500 text-slate-900 w-5 h-5 rounded-full text-xs flex items-center justify-center">{tab.badge}</span>
               )}
               {activeTab === tab.key && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />}
             </button>
@@ -406,6 +824,7 @@ const LeaveProposals = () => {
                     onReject={openRejectDialog}
                     onForward={openForwardDialog}
                     onPrint={handlePrintApprovedLetter}
+                    onCreateLetter={handleOpenBatchDialog}
                     onEdit={(proposal) => {
                       setEditingProposal(proposal);
                       setShowCreateForm(true);
@@ -423,8 +842,8 @@ const LeaveProposals = () => {
       <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
         <DialogContent className="bg-slate-800 border-slate-700 text-white">
           <DialogHeader>
-            <DialogTitle>Setujui & Terbitkan Surat Cuti</DialogTitle>
-            <DialogDescription className="text-slate-400">Isi data surat cuti. Menyetujui akan langsung membuat record cuti dan memotong saldo.</DialogDescription>
+            <DialogTitle>Setujui Pengajuan Cuti</DialogTitle>
+            <DialogDescription className="text-slate-400">Pilih opsi persetujuan di bawah ini.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -484,7 +903,10 @@ const LeaveProposals = () => {
             </Button>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowApprovalDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
-              <Button onClick={handleApproveSubmit} disabled={submitting || signers.length === 0} className="bg-green-600 hover:bg-green-700">
+              <Button onClick={() => handleApproveSubmit("batch")} disabled={submitting || signers.length === 0} className="bg-purple-600 hover:bg-purple-700">
+                {submitting ? "Memproses..." : "Setujui & Buat Surat Nanti"}
+              </Button>
+              <Button onClick={() => handleApproveSubmit("issue_letter")} disabled={submitting || signers.length === 0} className="bg-green-600 hover:bg-green-700">
                 {submitting ? "Memproses..." : "Setujui & Terbitkan"}
               </Button>
             </div>
@@ -542,15 +964,117 @@ const LeaveProposals = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* === Batch Letter Dialog === */}
+      <Dialog open={showBatchDialog} onOpenChange={setShowBatchDialog}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Buat Surat Keterangan Cuti</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Pilih jenis cuti dan opsi pembuatan surat (batch atau perorangan).
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            {/* Template Selection */}
+            <div>
+              <Label className="text-slate-300">Pilih Template Surat</Label>
+              {loadingTemplates ? (
+                <div className="text-sm text-slate-400 mt-2">Memuat template...</div>
+              ) : availableTemplates.length === 0 ? (
+                <div className="text-sm text-amber-400 mt-2">⚠️ Belum ada template surat. Silakan buat template terlebih dahulu di halaman Surat Keterangan.</div>
+              ) : (
+                <select 
+                  value={selectedTemplate?.id || availableTemplates[0]?.id} 
+                  onChange={(e) => setSelectedTemplate(availableTemplates.find(t => t.id === e.target.value))}
+                  className="w-full mt-2 bg-slate-700/50 border border-slate-600/50 rounded-md p-2 text-white focus:outline-none"
+                >
+                  {availableTemplates.map((template) => (
+                    <option key={template.id} value={template.id} className="bg-slate-800">
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Leave Type Groups */}
+            <div className="space-y-4">
+              {Object.entries(leaveTypeClassification).map(([leaveType, items]) => (
+                <div key={leaveType} className="border border-slate-700/50 rounded-lg p-4 bg-slate-900/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-white">{leaveType}</h4>
+                    <Badge className="bg-purple-600/20 text-purple-300 border-purple-600/30">
+                      {items.length} orang
+                    </Badge>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {items.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-2 rounded bg-slate-800/30">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm font-medium">
+                            {item.employee_name.charAt(0)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">{item.employee_name}</p>
+                            <p className="text-xs text-slate-400">{item.employee_nip} • {format(new Date(item.start_date), 'dd/MM/yyyy')} - {format(new Date(item.end_date), 'dd/MM/yyyy')}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 flex gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      className="bg-purple-600 hover:bg-purple-700"
+                      onClick={() => handleGenerateBatchLetter(leaveType, items, selectedTemplate?.id || availableTemplates[0]?.id, 'all')}
+                      disabled={generatingLetter}
+                    >
+                      <Download className="w-4 h-4 mr-1" />
+                      {generatingLetter ? 'Membuat...' : 'Buat Surat Batch'}
+                    </Button>
+                    
+                    <div className="flex-1" />
+                    
+                    {items.map((item) => (
+                      <Button
+                        key={item.id}
+                        size="sm"
+                        variant="outline"
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                        onClick={() => handleGenerateBatchLetter(leaveType, items, selectedTemplate?.id || availableTemplates[0]?.id, item.id)}
+                        disabled={generatingLetter}
+                      >
+                        <FileText className="w-4 h-4 mr-1" />
+                        {item.employee_name.split(' ')[0]}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-700/50">
+            <Button variant="outline" onClick={() => setShowBatchDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">
+              Tutup
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
 
 // ─── ProposalCard ───────────────────────────────────────────────────────────
-function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint, onEdit, onDelete }) {
+function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint, onEdit, onDelete, onCreateLetter }) {
   const isEmployeeApprovalTab = isAdminUnit && activeTab === "employee-approvals";
+  const isCreateLettersTab = isAdminUnit && activeTab === "create-letters";
   const canAct = isEmployeeApprovalTab && proposal.status === "pending";
   const canPrint = isEmployeeApprovalTab && proposal.status === "approved";
+  const canCreateLetter = isCreateLettersTab && proposal.status === "approved_for_letter";
   const canEditOrDelete = isEmployee && proposal.status === "rejected";
 
   return (
@@ -593,12 +1117,17 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
         </div>
 
         {/* Action buttons */}
-        {(canAct || canPrint || canEditOrDelete) && (
+        {(canAct || canPrint || canEditOrDelete || canCreateLetter) && (
           <div className="flex items-center gap-2">
             {canPrint && (
               <Button size="sm" variant="outline" onClick={() => onPrint(proposal)}
                 className="border-slate-600 text-slate-300 hover:bg-slate-700">
                 <Printer className="w-4 h-4 mr-1" /> Cetak Surat
+              </Button>
+            )}
+            {canCreateLetter && (
+              <Button size="sm" onClick={() => onCreateLetter(proposal)} className="bg-purple-600 hover:bg-purple-700 text-white">
+                <Layers className="w-4 h-4 mr-1" /> Buat Surat
               </Button>
             )}
             {canAct && (

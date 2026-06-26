@@ -176,58 +176,65 @@ export const useLeaveProposals = () => {
     }
   }, [toast, fetchProposals]);
 
-  const approveEmployeeProposal = useCallback(async (proposalId, items, approvalData) => {
+  const approveEmployeeProposal = useCallback(async (proposalId, items, approvalData, approvalType = "issue_letter") => {
     try {
       const currentUser = AuthManager.getUserSession();
       if (!currentUser) throw new Error("User not authenticated");
       if (currentUser.role !== 'admin_unit') throw new Error("Only admin unit can approve employee proposals");
 
-      // 1. For each item in the proposal, insert a record into leave_requests
-      for (const item of items) {
-        const leaveRequestData = {
-          employee_id: item.employee_id,
-          leave_type_id: item.leave_type_id,
-          start_date: item.start_date,
-          end_date: item.end_date,
-          days_requested: item.days_requested,
-          reason: item.reason || "",
-          leave_quota_year: item.leave_quota_year,
-          leave_period: item.leave_period || item.leave_quota_year,
-          submitted_date: new Date().toISOString(),
-          address_during_leave: item.address_during_leave || "",
-          application_form_date: item.application_form_date || null,
-          signed_by: approvalData.signed_by,
-          leave_letter_number: approvalData.letter_number,
-          leave_letter_date: approvalData.letter_date,
-        };
+      let finalStatus;
+      if (approvalType === "issue_letter") {
+        // 1. For each item in the proposal, insert a record into leave_requests
+        for (const item of items) {
+          const leaveRequestData = {
+            employee_id: item.employee_id,
+            leave_type_id: item.leave_type_id,
+            start_date: item.start_date,
+            end_date: item.end_date,
+            days_requested: item.days_requested,
+            reason: item.reason || "",
+            leave_quota_year: item.leave_quota_year,
+            leave_period: item.leave_period || item.leave_quota_year,
+            submitted_date: new Date().toISOString(),
+            address_during_leave: item.address_during_leave || "",
+            application_form_date: item.application_form_date || null,
+            signed_by: approvalData.signed_by,
+            leave_letter_number: approvalData.letter_number,
+            leave_letter_date: approvalData.letter_date,
+          };
 
-        // Insert into leave_requests
-        const { error: insertErr } = await supabase
-          .from("leave_requests")
-          .insert([leaveRequestData]);
-        if (insertErr) throw insertErr;
+          // Insert into leave_requests
+          const { error: insertErr } = await supabase
+            .from("leave_requests")
+            .insert([leaveRequestData]);
+          if (insertErr) throw insertErr;
 
-        // Deduct leave balance using the existing RPC function
-        const { error: rpcErr } = await supabase.rpc(
-          "update_leave_balance_with_splitting",
-          {
-            p_employee_id: item.employee_id,
-            p_leave_type_id: item.leave_type_id,
-            p_requested_year: item.leave_quota_year,
-            p_days: item.days_requested,
+          // Deduct leave balance using the existing RPC function
+          const { error: rpcErr } = await supabase.rpc(
+            "update_leave_balance_with_splitting",
+            {
+              p_employee_id: item.employee_id,
+              p_leave_type_id: item.leave_type_id,
+              p_requested_year: item.leave_quota_year,
+              p_days: item.days_requested,
+            }
+          );
+          if (rpcErr) {
+            console.error("Error updating balance:", rpcErr);
+            throw rpcErr;
           }
-        );
-        if (rpcErr) {
-          console.error("Error updating balance:", rpcErr);
-          throw rpcErr;
         }
+        finalStatus = "approved";
+      } else {
+        // Just approve without issuing letter, mark as ready for batch letter
+        finalStatus = "approved_for_letter";
       }
 
-      // 2. Update the proposal status to 'approved' or 'completed'
+      // 2. Update the proposal status
       const { error: updateErr } = await supabase
         .from("leave_proposals")
         .update({
-          status: 'approved',
+          status: finalStatus,
           approved_by: currentUser.id,
           approved_date: new Date().toISOString(),
           letter_number: approvalData.letter_number,
@@ -238,17 +245,19 @@ export const useLeaveProposals = () => {
 
       if (updateErr) throw updateErr;
 
-      // 3. Update status of proposal items to 'approved'
+      // 3. Update status of proposal items
       const { error: itemsUpdateErr } = await supabase
         .from("leave_proposal_items")
-        .update({ status: 'approved' })
+        .update({ status: finalStatus })
         .eq("proposal_id", proposalId);
 
       if (itemsUpdateErr) throw itemsUpdateErr;
 
       toast({
         title: "Success",
-        description: "Pengajuan cuti pegawai berhasil disetujui",
+        description: approvalType === "issue_letter" 
+          ? "Pengajuan cuti pegawai berhasil disetujui dan surat diterbitkan" 
+          : "Pengajuan cuti pegawai berhasil disetujui dan siap dibuat surat keterangan",
       });
 
       await fetchProposals();
