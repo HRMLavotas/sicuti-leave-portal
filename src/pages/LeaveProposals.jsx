@@ -256,7 +256,7 @@ const LeaveProposals = () => {
   const openForwardDialog = (proposal) => { setTargetProposal(proposal); setForwardNote(""); setShowForwardDialog(true); };
 
   const handleApproveSubmit = async (approvalType) => {
-    if (!selectedSigner) {
+    if (approvalType === "issue_letter" && !selectedSigner) {
       toast({ title: "Peringatan", description: "Silakan pilih penandatangan terlebih dahulu.", variant: "destructive" });
       return;
     }
@@ -265,7 +265,7 @@ const LeaveProposals = () => {
       await approveEmployeeProposal(targetProposal.id, targetProposal.leave_proposal_items, {
         letter_number: letterNumber,
         letter_date: letterDate,
-        signed_by: selectedSigner,
+        signed_by: approvalType === "issue_letter" ? selectedSigner : "",
         notes: approvalNotes,
       }, approvalType);
       setShowApprovalDialog(false);
@@ -903,7 +903,7 @@ const LeaveProposals = () => {
             </Button>
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setShowApprovalDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
-              <Button onClick={() => handleApproveSubmit("batch")} disabled={submitting || signers.length === 0} className="bg-purple-600 hover:bg-purple-700">
+              <Button onClick={() => handleApproveSubmit("batch")} disabled={submitting} className="bg-purple-600 hover:bg-purple-700">
                 {submitting ? "Memproses..." : "Setujui & Buat Surat Nanti"}
               </Button>
               <Button onClick={() => handleApproveSubmit("issue_letter")} disabled={submitting || signers.length === 0} className="bg-green-600 hover:bg-green-700">
