@@ -19,6 +19,7 @@ import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { validateLeaveProposal, validateEmployeeLeaveItem, sanitizeProposalData, checkLeaveConflicts } from "@/utils/leaveProposalValidation";
 import { countWorkingDays, fetchNationalHolidaysFromDB } from "@/utils/workingDays";
+import { attachSicutiEmployeeIds, resolveSicutiEmployeeIds } from "@/utils/sicutiEmployeeResolver";
 
 const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
   const { toast } = useToast();
@@ -117,16 +118,28 @@ const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
         }
 
         if (employee) {
+          const nipToLocalId = await resolveSicutiEmployeeIds([employee]);
+          const [resolvedEmployee] = attachSicutiEmployeeIds([employee], nipToLocalId);
+
+          if (!resolvedEmployee) {
+            toast({
+              variant: "destructive",
+              title: "Profil belum tersinkron",
+              description: "Profil Anda ditemukan di SIMPEL, tetapi belum dapat dipetakan ke data pegawai SiCuti.",
+            });
+            return;
+          }
+
           setCurrentLeaveItem(prev => ({
             ...prev,
-            employee_id: employee.id,
-            employee_name: employee.name,
-            employee_nip: employee.nip || "",
-            employee_department: employee.department || "",
-            employee_position: employee.position_name || "",
-            employee_rank: employee.rank_group || "",
+            employee_id: resolvedEmployee.id,
+            employee_name: resolvedEmployee.name,
+            employee_nip: resolvedEmployee.nip || "",
+            employee_department: resolvedEmployee.department || "",
+            employee_position: resolvedEmployee.position_name || "",
+            employee_rank: resolvedEmployee.rank_group || "",
           }));
-          setProposalTitle(`Pengajuan Cuti - ${employee.name}`);
+          setProposalTitle(`Pengajuan Cuti - ${resolvedEmployee.name}`);
         } else {
           // Fallback to session data
           console.warn("[LeaveProposalForm] Profil pegawai tidak ditemukan di SIMPEL, fallback ke sesi.");
@@ -185,18 +198,33 @@ const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
     }
   }, [currentLeaveItem.start_date, currentLeaveItem.end_date, holidays]);
 
-  const handleEmployeeSelect = (employeeId) => {
+  const handleEmployeeSelect = async (employeeId) => {
     const employee = displayedEmployees.find(emp => emp.id === employeeId);
     if (employee) {
-      setCurrentLeaveItem(prev => ({
-        ...prev,
-        employee_id: employee.id,
-        employee_name: employee.name,
-        employee_nip: employee.nip || "",
-        employee_department: employee.department || "",
-        employee_position: employee.position_name || "",
-        employee_rank: employee.rank_group || "",
-      }));
+      try {
+        const nipToLocalId = await resolveSicutiEmployeeIds([employee]);
+        const [resolvedEmployee] = attachSicutiEmployeeIds([employee], nipToLocalId);
+
+        if (!resolvedEmployee) {
+          throw new Error("Pegawai belum dapat dipetakan ke data pegawai SiCuti.");
+        }
+
+        setCurrentLeaveItem(prev => ({
+          ...prev,
+          employee_id: resolvedEmployee.id,
+          employee_name: resolvedEmployee.name,
+          employee_nip: resolvedEmployee.nip || "",
+          employee_department: resolvedEmployee.department || "",
+          employee_position: resolvedEmployee.position_name || "",
+          employee_rank: resolvedEmployee.rank_group || "",
+        }));
+      } catch (error) {
+        toast({
+          title: "Gagal memilih pegawai",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     }
   };
 

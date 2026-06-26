@@ -235,8 +235,8 @@ const LeaveHistoryPage = () => {
           return;
         }
 
-        // Map SIMPEL pegawai → ID lokal SiCuti (NIP sebagai penghubung).
-        // leave_balances / leave_requests di DB SiCuti mereferensi employees lokal, bukan SIMPEL.
+        // Sinkronkan pegawai SIMPEL ke SiCuti. Setelah migrasi, employees.id SiCuti
+        // memakai ID SIMPEL sehingga leave_balances / leave_requests terikat ke SIMPEL.
         const nipToLocalId = await resolveSicutiEmployeeIds(employeesData);
         const resolvedEmployees = attachSicutiEmployeeIds(employeesData, nipToLocalId);
 
@@ -246,7 +246,7 @@ const LeaveHistoryPage = () => {
           return;
         }
 
-        // Get employee IDs for fetching related data (SiCuti local IDs)
+        // Get employee IDs for fetching related data (SIMPEL IDs in SiCuti)
         const employeeIds = resolvedEmployees.map((emp) => emp.id);
         const year = parseInt(selectedYear);
         const previousYear = year - 1;

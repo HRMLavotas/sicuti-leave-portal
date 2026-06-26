@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/lib/supabaseClient";
-import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { getSimpelEmployees } from "@/hooks/useSimpelEmployees";
 import LeaveRequestForm from "@/components/leave_requests/LeaveRequestForm";
 import LeaveRequestCard from "@/components/leave_requests/LeaveRequestCard";

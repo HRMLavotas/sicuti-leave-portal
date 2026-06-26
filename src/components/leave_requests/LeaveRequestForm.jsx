@@ -21,13 +21,14 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
-import { applyEmployeeScopeFilter, assertCanAccessEmployeeById } from "@/utils/employeeScope";
+import { applyEmployeeScopeFilter, assertCanAccessSicutiEmployeeById } from "@/utils/employeeScope";
 import { Loader2, Search, X, Plus } from "lucide-react";
 import {
   countWorkingDays,
   fetchNationalHolidaysFromDB,
 } from "@/utils/workingDays";
 import { calculateLeaveBalance, ensureLeaveBalance } from "@/utils/leaveBalanceCalculator";
+import { attachSicutiEmployeeIds, resolveSicutiEmployeeIds } from "@/utils/sicutiEmployeeResolver";
 
 const LeaveRequestForm = ({
   employees,
@@ -49,6 +50,7 @@ const LeaveRequestForm = ({
 
   const [formData, setFormData] = useState({
     employee_id: "",
+    simpel_employee_id: "",
     employee_name: "",
     employee_nip: "",
     employee_rank: "",
@@ -114,6 +116,19 @@ const LeaveRequestForm = ({
     return null;
   }, [leaveBalanceSummary, selectedQuotaYear]);
 
+  const resolveEmployeeForSicuti = async (employee) => {
+    const nipToLocalId = await resolveSicutiEmployeeIds([employee]);
+    const [resolvedEmployee] = attachSicutiEmployeeIds([employee], nipToLocalId);
+
+    if (!resolvedEmployee?.id) {
+      throw new Error(
+        `Pegawai ${employee.name || ""} belum dapat dipetakan ke data pegawai SiCuti. Pastikan NIP pegawai valid.`,
+      );
+    }
+
+    return resolvedEmployee;
+  };
+
   const fetchEmployees = useCallback(
     async (query) => {
       if (!query.trim()) {
@@ -168,26 +183,40 @@ const LeaveRequestForm = ({
     const fetchEmployeeData = async () => {
       if (initialData?.employee_id) {
         try {
-          // Fetch the latest employee data from SIMPEL
-          const { data: employee, error } = await supabaseSimpelAdmin
+          const { data: localEmployee, error: localError } = await supabase
             .from("employees")
             .select("id, nip, name, department, position_name, rank_group, asn_status")
             .eq("id", initialData.employee_id)
             .maybeSingle();
 
-          if (error) throw error;
+          if (localError) throw localError;
 
-          if (employee) {
+          let employee = null;
+          if (localEmployee?.nip) {
+            const { data: simpelEmployee, error: simpelError } = await supabaseSimpelAdmin
+              .from("employees")
+              .select("id, nip, name, department, position_name, rank_group, asn_status")
+              .eq("nip", localEmployee.nip)
+              .maybeSingle();
+
+            if (simpelError) throw simpelError;
+            employee = simpelEmployee || null;
+          }
+
+          const displayEmployee = employee || localEmployee;
+
+          if (displayEmployee) {
             setFormData((prev) => ({
               ...prev,
-              employee_id: employee.id,
-              employee_name: employee.name,
-              employee_nip: employee.nip || "",
-              employee_rank: employee.rank_group || "",
-              employee_position: employee.position_name || "",
-              employee_department: employee.department || "",
+              employee_id: localEmployee.id,
+              simpel_employee_id: employee?.id || "",
+              employee_name: displayEmployee.name,
+              employee_nip: displayEmployee.nip || "",
+              employee_rank: displayEmployee.rank_group || "",
+              employee_position: displayEmployee.position_name || "",
+              employee_department: displayEmployee.department || "",
             }));
-            setSearchTerm(employee.name);
+            setSearchTerm(displayEmployee.name);
           }
         } catch (error) {
           console.error("Error fetching employee data:", error);
@@ -201,6 +230,7 @@ const LeaveRequestForm = ({
         setFormData((prev) => ({
           ...prev,
           employee_id: "",
+          simpel_employee_id: "",
           employee_name: "",
           employee_nip: "",
           employee_rank: "",
@@ -250,6 +280,7 @@ const LeaveRequestForm = ({
     } else {
       setFormData({
         employee_id: "",
+        simpel_employee_id: "",
         employee_name: "",
         employee_nip: "",
         employee_rank: "",
@@ -373,24 +404,35 @@ const LeaveRequestForm = ({
     }
   }, [initialData, signersData]);
 
-  const handleSelectEmployee = (employee) => {
-    setFormData((prev) => ({
-      ...prev,
-      employee_id: employee.id,
-      employee_name: employee.name,
-      employee_nip: employee.nip,
-      employee_rank: employee.rank_group || "",
-      employee_position: employee.position_name || "",
-      employee_department: employee.department || "",
-    }));
-    setSearchTerm(employee.name);
-    setShowDropdown(false);
+  const handleSelectEmployee = async (employee) => {
+    try {
+      const resolvedEmployee = await resolveEmployeeForSicuti(employee);
+      setFormData((prev) => ({
+        ...prev,
+        employee_id: resolvedEmployee.id,
+        simpel_employee_id: resolvedEmployee.simpelId || employee.id,
+        employee_name: resolvedEmployee.name,
+        employee_nip: resolvedEmployee.nip,
+        employee_rank: resolvedEmployee.rank_group || "",
+        employee_position: resolvedEmployee.position_name || "",
+        employee_department: resolvedEmployee.department || "",
+      }));
+      setSearchTerm(resolvedEmployee.name);
+      setShowDropdown(false);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Gagal memilih pegawai",
+        description: error.message,
+      });
+    }
   };
 
   const handleClearEmployee = () => {
     setFormData((prev) => ({
       ...prev,
       employee_id: "",
+      simpel_employee_id: "",
       employee_name: "",
       employee_nip: "",
       employee_rank: "",
@@ -673,7 +715,7 @@ const LeaveRequestForm = ({
 
     try {
       const currentUser = AuthManager.getUserSession();
-      await assertCanAccessEmployeeById(currentUser, formData.employee_id);
+      await assertCanAccessSicutiEmployeeById(currentUser, formData.employee_id);
 
       let error;
       if (initialData?.id) {
@@ -696,42 +738,46 @@ const LeaveRequestForm = ({
           new Date(dataToSubmit.start_date).getFullYear();
         const oldType = initialData.leave_type_id;
         const newType = dataToSubmit.leave_type_id;
+        const oldEmployeeId = initialData.employee_id;
+        const newEmployeeId = dataToSubmit.employee_id;
 
-        if (oldDays !== newDays || oldYear !== newYear || oldType !== newType) {
+        if (
+          oldDays !== newDays ||
+          oldYear !== newYear ||
+          oldType !== newType ||
+          oldEmployeeId !== newEmployeeId
+        ) {
           // Revert old balance using smart splitting
           const { error: revertError } = await supabase.rpc(
             "update_leave_balance_with_splitting",
             {
-              p_employee_id: dataToSubmit.employee_id,
+              p_employee_id: oldEmployeeId,
               p_leave_type_id: oldType,
               p_requested_year: oldYear,
               p_days: -oldDays,
             },
           );
-          if (revertError)
-            console.error(
-              "Gagal mengembalikan saldo lama:",
-              revertError.message,
-            );
+          if (revertError) throw revertError;
 
           // Apply new balance using smart splitting
           const { error: applyError } = await supabase.rpc(
             "update_leave_balance_with_splitting",
             {
-              p_employee_id: dataToSubmit.employee_id,
+              p_employee_id: newEmployeeId,
               p_leave_type_id: newType,
               p_requested_year: newYear,
               p_days: newDays,
             },
           );
-          if (applyError)
-            console.error("Gagal menerapkan saldo baru:", applyError.message);
+          if (applyError) throw applyError;
         }
       } else {
         // CREATE MODE: Insert new request and update balance
-        const { error: insertError } = await supabase
+        const { data: insertedRequest, error: insertError } = await supabase
           .from("leave_requests")
-          .insert([dataToSubmit]);
+          .insert([dataToSubmit])
+          .select("id")
+          .single();
         error = insertError;
         if (error) throw error;
 
@@ -748,8 +794,15 @@ const LeaveRequestForm = ({
             p_days: days_requested,
           },
         );
-        if (rpcError)
-          console.error(`Gagal memperbarui saldo cuti:`, rpcError.message);
+        if (rpcError) {
+          if (insertedRequest?.id) {
+            await supabase
+              .from("leave_requests")
+              .delete()
+              .eq("id", insertedRequest.id);
+          }
+          throw rpcError;
+        }
       }
 
       // Enhanced success message with quota year info

@@ -63,7 +63,8 @@ export function isLeaveDataReadOnly(user) {
 }
 
 /**
- * Ambil ID pegawai di DB SiCuti (bukan SIMPEL) sesuai scope role.
+ * Ambil ID pegawai di DB SiCuti sesuai scope role.
+ * Setelah migrasi, nilai ID ini adalah ID SIMPEL yang disimpan di tabel employees SiCuti.
  * null = akses semua pegawai (admin pusat / pimpinan).
  */
 export async function getScopedSicutiEmployeeIds(user) {
@@ -74,15 +75,27 @@ export async function getScopedSicutiEmployeeIds(user) {
   }
 
   if (user.role === "employee") {
-    if (user.employee_id) return [user.employee_id];
     const nip = user.nip ? String(user.nip).trim() : null;
-    if (!nip) return [];
-    const { data } = await supabase
-      .from("employees")
-      .select("id")
-      .eq("nip", nip)
-      .maybeSingle();
-    return data?.id ? [data.id] : [];
+    if (nip) {
+      const { data } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("nip", nip)
+        .maybeSingle();
+      if (data?.id) return [data.id];
+    }
+
+    // Fallback untuk sesi lama yang sudah menyimpan employee_id/id pegawai.
+    if (user.employee_id || user.id) {
+      const possibleIds = [user.employee_id, user.id].filter(Boolean);
+      const { data } = await supabase
+        .from("employees")
+        .select("id")
+        .in("id", possibleIds);
+      return (data || []).map((employee) => employee.id);
+    }
+
+    return [];
   }
 
   if (user.role === "admin_unit" && user.department) {
@@ -144,4 +157,43 @@ export async function assertCanAccessEmployeeById(user, employeeId) {
   }
 
   return employee;
+}
+
+/** Validasi akses untuk ID pegawai SiCuti yang sudah memakai ID SIMPEL. */
+export async function assertCanAccessSicutiEmployeeById(user, employeeId) {
+  if (!employeeId) {
+    throw new Error("Pegawai wajib dipilih.");
+  }
+
+  const { data: employee, error } = await supabase
+    .from("employees")
+    .select("id, nip, name, department")
+    .eq("id", employeeId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!employee) {
+    throw new Error("Data pegawai SiCuti tidak ditemukan.");
+  }
+
+  if (user?.role === "admin_pusat" || user?.role === "admin_pimpinan") {
+    return employee;
+  }
+
+  if (user?.role === "admin_unit") {
+    if (user.department && employee.department === user.department) {
+      return employee;
+    }
+    throw new Error("Anda tidak memiliki izin untuk mengelola data cuti pegawai ini.");
+  }
+
+  if (user?.role === "employee") {
+    const userNip = user.nip ? String(user.nip).trim() : null;
+    const employeeNip = employee.nip ? String(employee.nip).trim() : null;
+    if (userNip && employeeNip && userNip === employeeNip) {
+      return employee;
+    }
+  }
+
+  throw new Error("Anda tidak memiliki izin untuk mengelola data cuti pegawai ini.");
 }
