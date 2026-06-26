@@ -65,7 +65,7 @@ const LeaveRequests = () => {
   const { departments: unitPenempatanOptions, isLoadingDepartments } =
     useDepartments();
   const { leaveTypes, isLoadingLeaveTypes } = useLeaveTypes();
-  const { createProposal } = useLeaveProposals();
+  const { createProposal, proposals, fetchProposals } = useLeaveProposals();
 
   const [selectedUnitPenempatan, setSelectedUnitPenempatan] = useState("");
   const [selectedLeaveType, setSelectedLeaveType] = useState("");
@@ -77,12 +77,14 @@ const LeaveRequests = () => {
   const fetchLeaveRequests = useCallback(async () => {
     setIsLoading(true);
     try {
+      const currentUser = AuthManager.getUserSession();
+      const isEmployeeUser = currentUser?.role === "employee";
+
       // First, get the total count for pagination
       let countQuery = supabase
         .from("leave_requests")
         .select("*", { count: "exact", head: true });
 
-      const currentUser = AuthManager.getUserSession();
       const scopedEmployeeIds = await getScopedSicutiEmployeeIds(currentUser);
       countQuery = applySicutiEmployeeIdFilter(countQuery, scopedEmployeeIds);
 
@@ -120,8 +122,9 @@ const LeaveRequests = () => {
 
       dataQuery = applySicutiEmployeeIdFilter(dataQuery, scopedEmployeeIds);
 
-      // Only apply pagination if not searching
-      if (!debouncedSearchTerm) {
+      // Only apply pagination if not searching. Employee view merges pending
+      // proposals below, so pagination is applied after the merge.
+      if (!debouncedSearchTerm && !isEmployeeUser) {
         dataQuery = dataQuery.range(
           (currentPage - 1) * itemsPerPage,
           currentPage * itemsPerPage - 1,
@@ -178,7 +181,55 @@ const LeaveRequests = () => {
         rank_group: req.employees.rank_group,
         leave_type_id: req.leave_types.id,
         leaveTypeName: req.leave_types.name,
+        approval_status: req.status || "approved",
       }));
+
+      if (isEmployeeUser) {
+        const approvedProposalIds = new Set(
+          mappedData.map((req) => req.proposal_id).filter(Boolean),
+        );
+        const proposalRows = (proposals || [])
+          .filter((proposal) => {
+            if (proposal.status === "approved" && approvedProposalIds.has(proposal.id)) {
+              return false;
+            }
+            return ["pending", "approved", "rejected", "forwarded", "processed"].includes(proposal.status);
+          })
+          .flatMap((proposal) =>
+            (proposal.leave_proposal_items || []).map((item) => ({
+              id: `proposal-${proposal.id}-${item.id}`,
+              proposal_id: proposal.id,
+              proposal_item_id: item.id,
+              isProposal: true,
+              approval_status: proposal.status,
+              employee_id: item.employee_id,
+              employeeName: item.employee_name,
+              nip: item.employee_nip,
+              department: item.employee_department,
+              rank_group: item.employee_rank,
+              leave_type_id: item.leave_type_id,
+              leaveTypeName: item.leave_type_name,
+              start_date: item.start_date,
+              end_date: item.end_date,
+              days_requested: item.days_requested,
+              leave_quota_year: item.leave_quota_year,
+              leave_period: item.leave_period || item.leave_quota_year,
+              reason: item.reason || proposal.notes || "",
+              address_during_leave: item.address_during_leave || "",
+              application_form_date: item.application_form_date || null,
+              submitted_date: proposal.proposal_date || proposal.created_at,
+              leave_letter_number: proposal.letter_number || "",
+              leave_letter_date: proposal.letter_date || null,
+              signed_by: "",
+            })),
+          );
+
+        mappedData = [...proposalRows, ...mappedData].sort((a, b) => {
+          const dateA = new Date(a.submitted_date || a.start_date || 0).getTime();
+          const dateB = new Date(b.submitted_date || b.start_date || 0).getTime();
+          return dateB - dateA;
+        });
+      }
 
       // Apply client-side search filter if needed
       if (debouncedSearchTerm) {
@@ -194,7 +245,8 @@ const LeaveRequests = () => {
       }
 
       // Calculate total pages based on filtered data if search is active
-      const finalCount = debouncedSearchTerm ? mappedData.length : count || 0;
+      const finalCount =
+        debouncedSearchTerm || isEmployeeUser ? mappedData.length : count || 0;
       const totalPages = Math.ceil(finalCount / itemsPerPage);
       setTotalPages(totalPages);
       setTotalItems(finalCount);
@@ -206,7 +258,7 @@ const LeaveRequests = () => {
       }
 
       // Apply pagination to filtered data if search is active
-      if (debouncedSearchTerm) {
+      if (debouncedSearchTerm || isEmployeeUser) {
         const startIndex = (currentPage - 1) * itemsPerPage;
         const endIndex = startIndex + itemsPerPage;
         mappedData = mappedData.slice(startIndex, endIndex);
@@ -230,6 +282,7 @@ const LeaveRequests = () => {
     selectedLeaveType,
     selectedDateRange,
     currentPage,
+    proposals,
   ]);
 
   const fetchDropdownData = useCallback(async () => {
@@ -277,6 +330,7 @@ const LeaveRequests = () => {
   const onFormSubmitSuccess = () => {
     setIsFormOpen(false);
     setEditingRequest(null);
+    fetchProposals();
     fetchLeaveRequests();
   };
 

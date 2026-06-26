@@ -1,15 +1,46 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FileText, User, CalendarDays, Info, Edit2, Trash2 } from 'lucide-react';
+import { CheckCircle, Clock, FileText, Forward, User, XCircle, Edit2, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const LeaveRequestCard = ({ request, index, onEdit, onDelete }) => {
+  const statusConfig = {
+    pending: {
+      label: "Menunggu Persetujuan Admin Unit",
+      className: "bg-yellow-500/20 text-yellow-300 border-yellow-500/40",
+      icon: Clock,
+    },
+    approved: {
+      label: "Disetujui",
+      className: "bg-green-500/20 text-green-300 border-green-500/40",
+      icon: CheckCircle,
+    },
+    rejected: {
+      label: "Ditolak",
+      className: "bg-red-500/20 text-red-300 border-red-500/40",
+      icon: XCircle,
+    },
+    forwarded: {
+      label: "Diteruskan ke Admin Pusat",
+      className: "bg-blue-500/20 text-blue-300 border-blue-500/40",
+      icon: Forward,
+    },
+    processed: {
+      label: "Siap Dibuat Surat",
+      className: "bg-purple-500/20 text-purple-300 border-purple-500/40",
+      icon: FileText,
+    },
+  };
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
   };
+
+  const status = request.approval_status || request.status || "approved";
+  const badge = statusConfig[status] || statusConfig.approved;
+  const StatusIcon = badge.icon;
 
   return (
     <motion.div
@@ -20,23 +51,33 @@ const LeaveRequestCard = ({ request, index, onEdit, onDelete }) => {
     >
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between space-y-4 lg:space-y-0">
         <div className="flex-1">
-          <div className="flex justify-end space-x-2 mb-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-blue-400 hover:bg-blue-900/20 h-8 px-2"
-              onClick={() => onEdit(request)}
-            >
-              <Edit2 className="w-4 h-4 mr-1" /> Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-red-400 hover:bg-red-900/20 h-8 px-2"
-              onClick={() => onDelete(request.id)}
-            >
-              <Trash2 className="w-4 h-4 mr-1" /> Hapus
-            </Button>
+          <div className="flex flex-wrap justify-end gap-2 mb-2">
+            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${badge.className}`}>
+              <StatusIcon className="h-3 w-3" />
+              {badge.label}
+            </span>
+            {onEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-blue-400 hover:bg-blue-900/20 h-8 px-2"
+                onClick={() => onEdit(request)}
+                disabled={request.isProposal}
+              >
+                <Edit2 className="w-4 h-4 mr-1" /> Edit
+              </Button>
+            )}
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-400 hover:bg-red-900/20 h-8 px-2"
+                onClick={() => onDelete(request.id)}
+                disabled={request.isProposal}
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Hapus
+              </Button>
+            )}
           </div>
           <div className="flex items-start space-x-3 mb-3">
             <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0 mt-1">

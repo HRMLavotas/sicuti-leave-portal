@@ -3,6 +3,23 @@ import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { AuthManager } from "@/lib/auth";
 
+const getPossibleEmployeeIdsForCurrentUser = async (currentUser) => {
+  const ids = new Set([currentUser.employee_id, currentUser.id].filter(Boolean));
+  const nip = currentUser.nip ? String(currentUser.nip).trim() : null;
+
+  if (nip) {
+    const { data } = await supabase
+      .from("employees")
+      .select("id")
+      .eq("nip", nip)
+      .maybeSingle();
+
+    if (data?.id) ids.add(data.id);
+  }
+
+  return Array.from(ids);
+};
+
 export const useLeaveProposals = () => {
   const { toast } = useToast();
   const [proposals, setProposals] = useState([]);
@@ -33,22 +50,40 @@ export const useLeaveProposals = () => {
         // 1. Proposals they created (proposed_by)
         // 2. Proposals that include them as an employee (leave_proposal_items.employee_id)
         // First, fetch all proposal items that include the employee
-        const { data: employeeItems, error: itemsError } = await supabase
+        const possibleEmployeeIds = await getPossibleEmployeeIdsForCurrentUser(currentUser);
+        let itemsQuery = supabase
           .from("leave_proposal_items")
-          .select("proposal_id")
-          .eq("employee_id", currentUser.employee_id || currentUser.id);
+          .select("proposal_id");
+        if (possibleEmployeeIds.length === 1) {
+          itemsQuery = itemsQuery.eq("employee_id", possibleEmployeeIds[0]);
+        } else if (possibleEmployeeIds.length > 1) {
+          itemsQuery = itemsQuery.in("employee_id", possibleEmployeeIds);
+        } else {
+          itemsQuery = itemsQuery.eq("employee_id", "00000000-0000-0000-0000-000000000000");
+        }
+
+        const { data: employeeItems, error: itemsError } = await itemsQuery;
 
         if (itemsError) throw itemsError;
 
         const employeeProposalIds = employeeItems?.map(item => item.proposal_id) || [];
+        const possibleProposerIds = Array.from(new Set([currentUser.id, ...possibleEmployeeIds].filter(Boolean)));
+        let ownProposalIds = [];
 
-        // Then fetch all proposals where either:
-        // - proposed_by = currentUser.id OR
-        // - id is in employeeProposalIds
-        if (employeeProposalIds.length > 0) {
-          query = query.or(`proposed_by.eq.${currentUser.id},id.in.(${employeeProposalIds.join(",")})`);
+        if (possibleProposerIds.length > 0) {
+          const { data: ownProposals, error: ownError } = await supabase
+            .from("leave_proposals")
+            .select("id")
+            .in("proposed_by", possibleProposerIds);
+          if (ownError) throw ownError;
+          ownProposalIds = ownProposals?.map((proposal) => proposal.id) || [];
+        }
+
+        const visibleProposalIds = Array.from(new Set([...ownProposalIds, ...employeeProposalIds]));
+        if (visibleProposalIds.length > 0) {
+          query = query.in("id", visibleProposalIds);
         } else {
-          query = query.eq("proposed_by", currentUser.id);
+          query = query.eq("id", "00000000-0000-0000-0000-000000000000");
         }
       }
       // Master admin can see all proposals (no additional filter needed)
@@ -114,9 +149,9 @@ export const useLeaveProposals = () => {
         throw new Error("Only admin unit and employee can create proposals");
       }
 
-      const proposerUnit = currentUser.department || "Unknown";
+      const proposerUnit = proposalData.proposer_unit || currentUser.department || "Unknown";
       // Use employee_id if available (for SSO users from SIMPEL), otherwise use currentUser.id
-      const proposerId = currentUser.employee_id || currentUser.id;
+      const proposerId = proposalData.proposer_id || currentUser.employee_id || currentUser.id;
 
       const { data, error } = await supabase
         .from("leave_proposals")
@@ -231,25 +266,41 @@ export const useLeaveProposals = () => {
             proposal_id: proposalId,
           };
 
-          // Insert into leave_requests
-          const { error: insertErr } = await supabase
+          const { data: existingRequest, error: existingErr } = await supabase
             .from("leave_requests")
-            .insert([leaveRequestData]);
-          if (insertErr) throw insertErr;
+            .select("id")
+            .eq("proposal_id", proposalId)
+            .eq("employee_id", item.employee_id)
+            .eq("leave_type_id", item.leave_type_id)
+            .eq("start_date", item.start_date)
+            .eq("end_date", item.end_date)
+            .maybeSingle();
+          if (existingErr) throw existingErr;
 
-          // Deduct leave balance using the existing RPC function
-          const { error: rpcErr } = await supabase.rpc(
-            "update_leave_balance_with_splitting",
-            {
-              p_employee_id: item.employee_id,
-              p_leave_type_id: item.leave_type_id,
-              p_requested_year: item.leave_quota_year,
-              p_days: item.days_requested,
+          if (!existingRequest) {
+            // Insert into leave_requests
+            const { error: insertErr } = await supabase
+              .from("leave_requests")
+              .insert([leaveRequestData]);
+            if (insertErr) throw insertErr;
+
+            // Deduct leave balance using the existing RPC function
+            const requestPeriodYear =
+              parseInt(item.leave_period) ||
+              new Date(item.start_date).getFullYear();
+            const { error: rpcErr } = await supabase.rpc(
+              "update_leave_balance_with_splitting",
+              {
+                p_employee_id: item.employee_id,
+                p_leave_type_id: item.leave_type_id,
+                p_requested_year: requestPeriodYear,
+                p_days: item.days_requested,
+              }
+            );
+            if (rpcErr) {
+              console.error("Error updating balance:", rpcErr);
+              throw rpcErr;
             }
-          );
-          if (rpcErr) {
-            console.error("Error updating balance:", rpcErr);
-            throw rpcErr;
           }
           
           // Also update the item's status
@@ -315,25 +366,41 @@ export const useLeaveProposals = () => {
             proposal_id: proposalId,
           };
 
-          // Insert into leave_requests
-          const { error: insertErr } = await supabase
+          const { data: existingRequest, error: existingErr } = await supabase
             .from("leave_requests")
-            .insert([leaveRequestData]);
-          if (insertErr) throw insertErr;
+            .select("id")
+            .eq("proposal_id", proposalId)
+            .eq("employee_id", item.employee_id)
+            .eq("leave_type_id", item.leave_type_id)
+            .eq("start_date", item.start_date)
+            .eq("end_date", item.end_date)
+            .maybeSingle();
+          if (existingErr) throw existingErr;
 
-          // Deduct leave balance using the existing RPC function
-          const { error: rpcErr } = await supabase.rpc(
-            "update_leave_balance_with_splitting",
-            {
-              p_employee_id: item.employee_id,
-              p_leave_type_id: item.leave_type_id,
-              p_requested_year: item.leave_quota_year,
-              p_days: item.days_requested,
+          if (!existingRequest) {
+            // Insert into leave_requests
+            const { error: insertErr } = await supabase
+              .from("leave_requests")
+              .insert([leaveRequestData]);
+            if (insertErr) throw insertErr;
+
+            // Deduct leave balance using the existing RPC function
+            const requestPeriodYear =
+              parseInt(item.leave_period) ||
+              new Date(item.start_date).getFullYear();
+            const { error: rpcErr } = await supabase.rpc(
+              "update_leave_balance_with_splitting",
+              {
+                p_employee_id: item.employee_id,
+                p_leave_type_id: item.leave_type_id,
+                p_requested_year: requestPeriodYear,
+                p_days: item.days_requested,
+              }
+            );
+            if (rpcErr) {
+              console.error("Error updating balance:", rpcErr);
+              throw rpcErr;
             }
-          );
-          if (rpcErr) {
-            console.error("Error updating balance:", rpcErr);
-            throw rpcErr;
           }
         }
         proposalFinalStatus = "approved";

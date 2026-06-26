@@ -18,6 +18,7 @@ import { useLeaveTypes } from "@/hooks/useLeaveTypes";
 import { useToast } from "@/components/ui/use-toast";
 import { countWorkingDays, fetchNationalHolidaysFromDB } from "@/utils/workingDays";
 import { calculateLeaveBalance, ensureLeaveBalance } from "@/utils/leaveBalanceCalculator";
+import { attachSicutiEmployeeIds, resolveSicutiEmployeeIds } from "@/utils/sicutiEmployeeResolver";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,7 +117,17 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
         }
 
         if (emp) {
-          setProfile(emp);
+          const nipToLocalId = await resolveSicutiEmployeeIds([emp]);
+          const [resolvedEmp] = attachSicutiEmployeeIds([emp], nipToLocalId);
+
+          if (!resolvedEmp) {
+            setProfileError(
+              "Profil ditemukan di SIMPEL, tetapi belum dapat dipetakan ke data pegawai SiCuti. Hubungi Admin Unit/Admin Pusat.",
+            );
+            return;
+          }
+
+          setProfile(resolvedEmp);
         } else {
           // Fallback ke data sesi jika tidak ada di SIMPEL
           if (currentUser?.name) {
@@ -265,6 +276,7 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
       await onSubmit({
         title: `Pengajuan Cuti - ${profile.name}`,
         notes: reason || "",
+        proposer_id: profile.id,
         proposer_unit: profile.department || currentUser?.department || "Unknown",
         employees: [{
           employee_id: profile.id,

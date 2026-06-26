@@ -110,6 +110,7 @@ const LeaveProposals = () => {
 
   const {
     proposals, isLoading, fetchProposals,
+    createProposal,
     approveEmployeeProposal, rejectEmployeeProposal, forwardToAdminPusat,
     deleteProposal, updateProposal,
   } = useLeaveProposals();
