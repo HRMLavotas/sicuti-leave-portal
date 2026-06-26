@@ -430,7 +430,7 @@ const LeaveProposals = () => {
         nama_pegawai: completeItems[0]?.employee_name || "-",
         nip: completeItems[0]?.employee_nip || "-",
         jabatan: completeItems[0]?.employee_position || "-",
-        pangkat_golongan: "-",
+        pangkat_golongan: completeItems[0]?.employee_rank || "-",
         status_asn: "ASN",
         tanggal_mulai: completeItems[0]?.start_date ? format(new Date(completeItems[0].start_date), "dd/MM/yyyy") : "-",
         tanggal_selesai: completeItems[0]?.end_date ? format(new Date(completeItems[0].end_date), "dd/MM/yyyy") : "-",
@@ -459,7 +459,7 @@ const LeaveProposals = () => {
           jabatan: item.employee_position || "-",
           departemen: currentUser?.department || "UNIT KERJA",
           unit_kerja: currentUser?.department || "UNIT KERJA",
-          pangkat_golongan: "-",
+          pangkat_golongan: item.employee_rank || "-",
           status_asn: "ASN",
           jenis_cuti: item.leave_type_name || leaveType,
           tanggal_mulai: format(new Date(item.start_date), "dd/MM/yyyy"),
@@ -493,7 +493,7 @@ const LeaveProposals = () => {
         variables[`nama_${num}`] = item.employee_name || "Nama tidak diketahui";
         variables[`nip_${num}`] = item.employee_nip || "-";
         variables[`jabatan_${num}`] = item.employee_position || "-";
-        variables[`pangkat_golongan_${num}`] = "-";
+        variables[`pangkat_golongan_${num}`] = item.employee_rank || "-";
         variables[`departemen_${num}`] = currentUser?.department || "UNIT KERJA";
         variables[`unit_kerja_${num}`] = currentUser?.department || "UNIT KERJA";
         variables[`jenis_cuti_${num}`] = item.leave_type_name || leaveType;

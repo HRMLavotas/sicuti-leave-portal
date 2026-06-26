@@ -549,6 +549,7 @@ export const useLeaveProposals = () => {
         employee_nip: emp.employee_nip,
         employee_department: emp.employee_department,
         employee_position: emp.employee_position || "",
+        employee_rank: emp.employee_rank || "",
         leave_type_id: emp.leave_type_id,
         leave_type_name: emp.leave_type_name,
         start_date: emp.start_date,
