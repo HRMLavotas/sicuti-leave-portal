@@ -36,8 +36,7 @@ const STATUS_CONFIG = {
   approved:  { label: "Disetujui",    color: "bg-green-500/20 text-green-300 border-green-500/30",   icon: CheckCircle },
   rejected:  { label: "Ditolak",      color: "bg-red-500/20 text-red-300 border-red-500/30",         icon: XCircle },
   forwarded: { label: "Diteruskan ke Admin Pusat", color: "bg-blue-500/20 text-blue-300 border-blue-500/30", icon: Forward },
-  processed: { label: "Diproses",     color: "bg-slate-500/20 text-slate-300 border-slate-500/30",   icon: FileText },
-  approved_for_letter: { label: "Siap Buat Surat", color: "bg-purple-500/20 text-purple-300 border-purple-500/30", icon: FileText },
+  processed: { label: "Siap Buat Surat",     color: "bg-purple-500/20 text-purple-300 border-purple-500/30",   icon: FileText },
 };
 
 function StatusBadge({ status }) {
@@ -674,7 +673,7 @@ const LeaveProposals = () => {
   const displayProposals = proposals.filter((p) => {
     if (isEmployee) return p.proposed_by === currentUser.id;
     if (activeTab === "my-proposals") return p.proposed_by === currentUser.id;
-    if (activeTab === "create-letters") return p.status === "approved_for_letter";
+    if (activeTab === "create-letters") return p.status === "processed";
     // employee-approvals: proposals from employees in this unit (not created by admin themselves)
     return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department;
   });
@@ -682,7 +681,7 @@ const LeaveProposals = () => {
   const pendingEmployeeCount = proposals.filter(
     p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending'
   ).length;
-  const readyForLettersCount = proposals.filter(p => p.status === 'approved_for_letter').length;
+  const readyForLettersCount = proposals.filter(p => p.status === 'processed').length;
 
   if (showCreateForm) {
     return (
@@ -849,7 +848,7 @@ const LeaveProposals = () => {
             <div>
               <Label className="text-slate-300">Penandatangan Surat</Label>
               {signers.length === 0 ? (
-                <p className="text-xs text-amber-400 mt-1">⚠️ Belum ada penandatangan. Atur di halaman Surat Keterangan terlebih dahulu.</p>
+                <p className="text-xs text-slate-400 mt-1">Belum ada penandatangan.</p>
               ) : (
                 <select value={selectedSigner} onChange={e => setSelectedSigner(e.target.value)}
                   className="w-full mt-1 bg-slate-700/50 border border-slate-600/50 rounded-md p-2 text-white focus:outline-none">
@@ -1074,7 +1073,7 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
   const isCreateLettersTab = isAdminUnit && activeTab === "create-letters";
   const canAct = isEmployeeApprovalTab && proposal.status === "pending";
   const canPrint = isEmployeeApprovalTab && proposal.status === "approved";
-  const canCreateLetter = isCreateLettersTab && proposal.status === "approved_for_letter";
+  const canCreateLetter = isCreateLettersTab && proposal.status === "processed";
   const canEditOrDelete = isEmployee && proposal.status === "rejected";
 
   return (

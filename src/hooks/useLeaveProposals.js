@@ -226,8 +226,8 @@ export const useLeaveProposals = () => {
         }
         finalStatus = "approved";
       } else {
-        // Just approve without issuing letter, mark as ready for batch letter
-        finalStatus = "approved_for_letter";
+        // Just approve without issuing letter, mark as processed for batch letter
+        finalStatus = "processed";
       }
 
       // 2. Update the proposal status
