@@ -295,6 +295,7 @@ const LeaveProposals = () => {
         employee_name: item.employee_name,
         employee_nip: item.employee_nip,
         employee_position: item.employee_position,
+        employee_rank: item.employee_rank,
         leave_type_name: item.leave_type_name,
         leave_type_id: item.leave_type_id,
         start_date: item.start_date,
