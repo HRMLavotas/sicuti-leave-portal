@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ import { id } from "date-fns/locale";
 import { validateLeaveProposal, validateEmployeeLeaveItem, sanitizeProposalData, checkLeaveConflicts } from "@/utils/leaveProposalValidation";
 import { countWorkingDays, fetchNationalHolidaysFromDB } from "@/utils/workingDays";
 
-const LeaveProposalForm = ({ onSubmit, onCancel }) => {
+const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
   const { toast } = useToast();
   const currentUser = AuthManager.getUserSession();
   const isEmployee = currentUser?.role === 'employee';
@@ -53,6 +53,18 @@ const LeaveProposalForm = ({ onSubmit, onCancel }) => {
     reason: "",
     address_during_leave: "",
   });
+
+  // Populate form with initial data when available
+  useEffect(() => {
+    if (initialData) {
+      setProposalTitle(initialData.proposal_title || "");
+      setNotes(initialData.notes || "");
+      
+      if (initialData.leave_proposal_items && initialData.leave_proposal_items.length > 0) {
+        setSelectedEmployees(initialData.leave_proposal_items);
+      }
+    }
+  }, [initialData]);
 
   // Fetch holidays for current and previous year on mount
   useEffect(() => {

@@ -30,7 +30,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-const EmployeeLeaveRequestForm = ({ onSubmit, onCancel }) => {
+const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) => {
   const { toast } = useToast();
   const currentUser = AuthManager.getUserSession();
   const currentYear = useMemo(() => new Date().getFullYear(), []);
@@ -50,6 +50,21 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel }) => {
   const [leavePeriod, setLeavePeriod] = useState(currentYear.toString());
   const [appFormDate, setAppFormDate] = useState(new Date().toISOString().split("T")[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Populate form with initial data when available
+  useEffect(() => {
+    if (initialData && initialData.leave_proposal_items && initialData.leave_proposal_items.length > 0) {
+      const item = initialData.leave_proposal_items[0];
+      setLeaveTypeId(item.leave_type_id);
+      setStartDate(item.start_date);
+      setEndDate(item.end_date);
+      setReason(item.reason || "");
+      setAddressDuringLeave(item.address_during_leave || "");
+      setLeaveQuotaYear(item.leave_quota_year?.toString() || currentYear.toString());
+      setLeavePeriod(item.leave_period?.toString() || currentYear.toString());
+      setAppFormDate(item.application_form_date || new Date().toISOString().split("T")[0]);
+    }
+  }, [initialData, currentYear]);
 
   // ── Derived / computed ─────────────────────────────────────────────────────
   const [holidays, setHolidays] = useState(new Set());

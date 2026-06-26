@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   FileText, Plus, CheckCircle, XCircle, Clock, User,
-  Check, Forward, Printer, ChevronDown,
+  Check, Forward, Printer, ChevronDown, Edit, Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,9 +54,11 @@ const LeaveProposals = () => {
   const {
     proposals, isLoading, fetchProposals,
     approveEmployeeProposal, rejectEmployeeProposal, forwardToAdminPusat,
+    deleteProposal, updateProposal,
   } = useLeaveProposals();
 
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingProposal, setEditingProposal] = useState(null);
   const [tableExists, setTableExists] = useState(true);
   const [activeTab, setActiveTab] = useState("my-proposals");
 
@@ -113,58 +115,66 @@ const LeaveProposals = () => {
 
   const handleCreateProposal = async (proposalData) => {
     try {
-      const proposerUnit = isEmployee
-        ? proposalData.proposer_unit
-        : (currentUser.department || "Unknown");
+      if (editingProposal) {
+        // Update existing proposal
+        await updateProposal(editingProposal.id, proposalData);
+        setEditingProposal(null);
+        setShowCreateForm(false);
+      } else {
+        // Create new proposal
+        const proposerUnit = isEmployee
+          ? proposalData.proposer_unit
+          : (currentUser.department || "Unknown");
 
-      const { data: proposal, error: proposalError } = await supabase
-        .from("leave_proposals")
-        .insert({
-          proposal_title: proposalData.title,
-          proposed_by: currentUser.id,
-          proposer_name: currentUser.name,
-          proposer_unit: proposerUnit,
-          notes: proposalData.notes || "",
-          total_employees: proposalData.employees.length,
-          status: "pending",
-        })
-        .select()
-        .single();
-      if (proposalError) throw proposalError;
+        const { data: proposal, error: proposalError } = await supabase
+          .from("leave_proposals")
+          .insert({
+            proposal_title: proposalData.title,
+            proposed_by: currentUser.id,
+            proposer_name: currentUser.name,
+            proposer_unit: proposerUnit,
+            notes: proposalData.notes || "",
+            total_employees: proposalData.employees.length,
+            status: "pending",
+          })
+          .select()
+          .single();
+        if (proposalError) throw proposalError;
 
-      const proposalItems = proposalData.employees.map(emp => ({
-        proposal_id: proposal.id,
-        employee_id: emp.employee_id,
-        employee_name: emp.employee_name,
-        employee_nip: emp.employee_nip,
-        employee_department: emp.employee_department,
-        employee_position: emp.employee_position || "",
-        leave_type_id: emp.leave_type_id,
-        leave_type_name: emp.leave_type_name,
-        start_date: emp.start_date,
-        end_date: emp.end_date,
-        days_requested: emp.days_requested,
-        leave_quota_year: emp.leave_quota_year,
-        leave_period: emp.leave_period || emp.leave_quota_year,
-        reason: emp.reason || "",
-        address_during_leave: emp.address_during_leave || "",
-        application_form_date: emp.application_form_date || null,
-        status: "proposed",
-      }));
+        const proposalItems = proposalData.employees.map(emp => ({
+          proposal_id: proposal.id,
+          employee_id: emp.employee_id,
+          employee_name: emp.employee_name,
+          employee_nip: emp.employee_nip,
+          employee_department: emp.employee_department,
+          employee_position: emp.employee_position || "",
+          leave_type_id: emp.leave_type_id,
+          leave_type_name: emp.leave_type_name,
+          start_date: emp.start_date,
+          end_date: emp.end_date,
+          days_requested: emp.days_requested,
+          leave_quota_year: emp.leave_quota_year,
+          leave_period: emp.leave_period || emp.leave_quota_year,
+          reason: emp.reason || "",
+          address_during_leave: emp.address_during_leave || "",
+          application_form_date: emp.application_form_date || null,
+          status: "proposed",
+        }));
 
-      const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
-      if (itemsError) throw itemsError;
+        const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
+        if (itemsError) throw itemsError;
 
-      toast({
-        title: "Berhasil",
-        description: isEmployee
-          ? "Pengajuan cuti berhasil dikirim ke Admin Unit"
-          : "Usulan cuti berhasil dibuat",
-      });
-      setShowCreateForm(false);
-      fetchProposals();
+        toast({
+          title: "Berhasil",
+          description: isEmployee
+            ? "Pengajuan cuti berhasil dikirim ke Admin Unit"
+            : "Usulan cuti berhasil dibuat",
+        });
+        setShowCreateForm(false);
+        fetchProposals();
+      }
     } catch (error) {
-      toast({ variant: "destructive", title: "Gagal Membuat Usulan", description: error.message });
+      toast({ variant: "destructive", title: editingProposal ? "Gagal Memperbarui Usulan" : "Gagal Membuat Usulan", description: error.message });
     }
   };
 
@@ -264,24 +274,37 @@ const LeaveProposals = () => {
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <button
-                onClick={() => setShowCreateForm(false)}
+                onClick={() => {
+                  setShowCreateForm(false);
+                  setEditingProposal(null);
+                }}
                 className="text-slate-400 hover:text-white text-sm flex items-center gap-1"
               >
                 ← Kembali
               </button>
-              <h2 className="text-xl font-bold text-white">Form Pengajuan Cuti</h2>
+              <h2 className="text-xl font-bold text-white">
+                {editingProposal ? "Edit Pengajuan Cuti" : "Form Pengajuan Cuti"}
+              </h2>
             </div>
             <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-6">
               <EmployeeLeaveRequestForm
                 onSubmit={handleCreateProposal}
-                onCancel={() => setShowCreateForm(false)}
+                onCancel={() => {
+                  setShowCreateForm(false);
+                  setEditingProposal(null);
+                }}
+                initialData={editingProposal}
               />
             </div>
           </div>
         ) : (
           <LeaveProposalForm
             onSubmit={handleCreateProposal}
-            onCancel={() => setShowCreateForm(false)}
+            onCancel={() => {
+              setShowCreateForm(false);
+              setEditingProposal(null);
+            }}
+            initialData={editingProposal}
           />
         )}
       </div>
@@ -383,6 +406,11 @@ const LeaveProposals = () => {
                     onReject={openRejectDialog}
                     onForward={openForwardDialog}
                     onPrint={handlePrintApprovedLetter}
+                    onEdit={(proposal) => {
+                      setEditingProposal(proposal);
+                      setShowCreateForm(true);
+                    }}
+                    onDelete={deleteProposal}
                   />
                 ))}
               </div>
@@ -491,11 +519,12 @@ const LeaveProposals = () => {
   );
 };
 
-// ─── ProposalCard ────────────────────────────────────────────────────────────
-function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint }) {
+// ─── ProposalCard ───────────────────────────────────────────────────────────
+function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint, onEdit, onDelete }) {
   const isEmployeeApprovalTab = isAdminUnit && activeTab === "employee-approvals";
   const canAct = isEmployeeApprovalTab && proposal.status === "pending";
   const canPrint = isEmployeeApprovalTab && proposal.status === "approved";
+  const canEditOrDelete = isEmployee && proposal.status === "rejected";
 
   return (
     <div className="p-4 bg-slate-700/30 rounded-lg border border-slate-600/50 hover:bg-slate-700/50 transition-colors">
@@ -536,8 +565,8 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
           )}
         </div>
 
-        {/* Action buttons for admin_unit on employee-approvals tab */}
-        {(canAct || canPrint) && (
+        {/* Action buttons */}
+        {(canAct || canPrint || canEditOrDelete) && (
           <div className="flex items-center gap-2">
             {canPrint && (
               <Button size="sm" variant="outline" onClick={() => onPrint(proposal)}
@@ -567,6 +596,17 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+              </>
+            )}
+            {canEditOrDelete && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => onEdit(proposal)}
+                  className="border-slate-600 text-slate-300 hover:bg-slate-700">
+                  <Edit className="w-4 h-4 mr-1" /> Edit
+                </Button>
+                <Button size="sm" variant="destructive" onClick={() => onDelete(proposal.id)}>
+                  <Trash2 className="w-4 h-4 mr-1" /> Hapus
+                </Button>
               </>
             )}
           </div>

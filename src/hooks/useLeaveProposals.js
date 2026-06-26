@@ -1,4 +1,4 @@
-﻿import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { AuthManager } from "@/lib/auth";
@@ -346,6 +346,116 @@ export const useLeaveProposals = () => {
     fetchProposals();
   }, [fetchProposals]);
 
+  const deleteProposal = useCallback(async (proposalId) => {
+    try {
+      const currentUser = AuthManager.getUserSession();
+      if (!currentUser) {
+        throw new Error("User not authenticated");
+      }
+
+      // Delete proposal items first
+      const { error: itemsError } = await supabase
+        .from("leave_proposal_items")
+        .delete()
+        .eq("proposal_id", proposalId);
+
+      if (itemsError) throw itemsError;
+
+      // Delete the proposal itself
+      const { error: proposalError } = await supabase
+        .from("leave_proposals")
+        .delete()
+        .eq("id", proposalId);
+
+      if (proposalError) throw proposalError;
+
+      toast({
+        title: "Berhasil",
+        description: "Pengajuan cuti berhasil dihapus",
+      });
+
+      await fetchProposals();
+    } catch (err) {
+      console.error("Error deleting proposal:", err);
+      toast({
+        title: "Error",
+        description: "Gagal menghapus pengajuan: " + err.message,
+        variant: "destructive",
+      });
+      throw err;
+    }
+  }, [toast, fetchProposals]);
+
+  const updateProposal = useCallback(async (proposalId, proposalData) => {
+    try {
+      const currentUser = AuthManager.getUserSession();
+      if (!currentUser) {
+        throw new Error("User not authenticated");
+      }
+
+      // 1. Update main proposal
+      const { error: proposalError } = await supabase
+        .from("leave_proposals")
+        .update({
+          proposal_title: proposalData.title,
+          notes: proposalData.notes || "",
+          proposer_unit: proposalData.proposer_unit,
+          total_employees: proposalData.employees.length,
+          status: "pending", // Reset status to pending when edited
+        })
+        .eq("id", proposalId);
+
+      if (proposalError) throw proposalError;
+
+      // 2. Delete old proposal items
+      const { error: deleteItemsError } = await supabase
+        .from("leave_proposal_items")
+        .delete()
+        .eq("proposal_id", proposalId);
+
+      if (deleteItemsError) throw deleteItemsError;
+
+      // 3. Insert new proposal items
+      const proposalItems = proposalData.employees.map(emp => ({
+        proposal_id: proposalId,
+        employee_id: emp.employee_id,
+        employee_name: emp.employee_name,
+        employee_nip: emp.employee_nip,
+        employee_department: emp.employee_department,
+        employee_position: emp.employee_position || "",
+        leave_type_id: emp.leave_type_id,
+        leave_type_name: emp.leave_type_name,
+        start_date: emp.start_date,
+        end_date: emp.end_date,
+        days_requested: emp.days_requested,
+        leave_quota_year: emp.leave_quota_year,
+        leave_period: emp.leave_period || emp.leave_quota_year,
+        reason: emp.reason || "",
+        address_during_leave: emp.address_during_leave || "",
+        application_form_date: emp.application_form_date || null,
+        status: "pending",
+      }));
+
+      const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
+      if (itemsError) throw itemsError;
+
+      toast({
+        title: "Berhasil",
+        description: "Pengajuan cuti berhasil diperbarui",
+      });
+
+      await fetchProposals();
+    } catch (err) {
+      console.error("Error updating proposal:", err);
+      toast({
+        title: "Error",
+        description: "Gagal memperbarui pengajuan: " + err.message,
+        variant: "destructive",
+      });
+      throw err;
+    }
+  }, [toast, fetchProposals]);
+
   return {
     proposals,
     isLoading,
@@ -356,6 +466,8 @@ export const useLeaveProposals = () => {
     approveEmployeeProposal,
     rejectEmployeeProposal,
     forwardToAdminPusat,
+    deleteProposal,
+    updateProposal,
   };
 };
 
