@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthManager } from "@/lib/auth";
+import { redirectToSimpelLogin } from "@/lib/supabaseSSO";
 import { Loader2, AlertCircle } from "lucide-react";
 
 /**
@@ -9,8 +10,6 @@ import { Loader2, AlertCircle } from "lucide-react";
  * Menerima code dari SIPANDAI, tukar via /api/auth-sso,
  * lalu simpan ke AuthManager (localStorage). Tidak perlu Supabase Auth SiCuti.
  */
-
-const SIMPEL_AUTH_URL = "https://sipandai.site/auth";
 
 function getPermissionsForRole(role) {
   if (role === "admin_pusat")    return ["all"];
@@ -47,9 +46,7 @@ const AuthCallback = () => {
 
       if (!code && !access_token) {
         console.warn("[AuthCallback] Tidak ada token/code, redirect ke SIPANDAI");
-        window.location.replace(
-          `${SIMPEL_AUTH_URL}?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`
-        );
+        redirectToSimpelLogin();
         return;
       }
 
@@ -113,7 +110,7 @@ const AuthCallback = () => {
           <h2 className="text-white font-semibold text-lg">Login SSO Gagal</h2>
           <p className="text-slate-400 text-sm leading-relaxed">{errorMsg}</p>
           <a
-            href={`${SIMPEL_AUTH_URL}?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`}
+            href={`${import.meta.env.VITE_SIMPEL_APP_URL || "https://simpel.sipandai.site"}/auth?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`}
             className="inline-flex items-center justify-center gap-2 w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 text-sm font-semibold transition-colors"
           >
             Kembali ke Portal SIPANDAI
