@@ -1,4 +1,4 @@
-﻿import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -103,7 +103,11 @@ function App() {
                             </RoleGuard>
                           } />
                           <Route path="/leave-requests" element={<LeaveRequests />} />
-                          <Route path="/leave-proposals" element={<LeaveProposals />} />
+                          <Route path="/leave-proposals" element={
+                            <RoleGuard blockedRoles={["employee"]}>
+                              <LeaveProposals />
+                            </RoleGuard>
+                          } />
                           <Route path="/leave-history" element={<LeaveHistoryPage />} />
                           {import.meta.env.VITE_TEMPO && (
                             <Route path="/tempobook/*" />

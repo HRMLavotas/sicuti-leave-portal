@@ -42,16 +42,6 @@ async function fetchTemplatesFromSupabase() {
     if (!userUnit) throw new Error("Admin unit must have a unit assigned");
     // Use .or to fetch both types
     query = query.or(`and(template_scope.eq.global),and(template_scope.eq.unit,unit_scope.eq.${userUnit})`);
-  } else if (currentUser.role === "employee") {
-    // Employees get global templates AND (if they have a unit) their unit's templates
-    const userUnit = currentUser.department;
-    if (userUnit) {
-      // If employee has a unit, get both global and their unit's templates
-      query = query.or(`and(template_scope.eq.global),and(template_scope.eq.unit,unit_scope.eq.${userUnit})`);
-    } else {
-      // If employee has no unit, just get global templates
-      query = query.eq("template_scope", "global");
-    }
   } else {
     throw new Error("Insufficient permissions to access templates");
   }

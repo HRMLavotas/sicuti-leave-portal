@@ -28,6 +28,8 @@ import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { getSimpelEmployees } from "@/hooks/useSimpelEmployees";
 import LeaveRequestForm from "@/components/leave_requests/LeaveRequestForm";
 import LeaveRequestCard from "@/components/leave_requests/LeaveRequestCard";
+import EmployeeLeaveRequestForm from "@/components/leave_proposals/EmployeeLeaveRequestForm";
+import useLeaveProposals from "@/hooks/useLeaveProposals";
 import { Combobox } from "@/components/ui/combobox";
 import {
   Popover,
@@ -63,6 +65,7 @@ const LeaveRequests = () => {
   const { departments: unitPenempatanOptions, isLoadingDepartments } =
     useDepartments();
   const { leaveTypes, isLoadingLeaveTypes } = useLeaveTypes();
+  const { createProposal } = useLeaveProposals();
 
   const [selectedUnitPenempatan, setSelectedUnitPenempatan] = useState("");
   const [selectedLeaveType, setSelectedLeaveType] = useState("");
@@ -386,34 +389,45 @@ const LeaveRequests = () => {
             />
             {isLoading ? "Memuat..." : "Refresh"}
           </Button>
-          {!isEmployee && (
-            <Dialog
-              open={isFormOpen}
-              onOpenChange={(open) => {
-                setIsFormOpen(open);
-                if (!open) setEditingRequest(null);
-              }}
-            >
-              <DialogTrigger asChild>
-                <Button
-                  className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-                  onClick={() => setEditingRequest(null)}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Input Data Cuti
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingRequest ? "Edit Data Cuti" : "Form Input Data Cuti"}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {editingRequest
-                      ? "Ubah detail data cuti di bawah ini."
-                      : "Isi detail data cuti di bawah ini."}
-                  </DialogDescription>
-                </DialogHeader>
+          <Dialog
+            open={isFormOpen}
+            onOpenChange={(open) => {
+              setIsFormOpen(open);
+              if (!open) setEditingRequest(null);
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                onClick={() => setEditingRequest(null)}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {isEmployee ? "Ajukan Cuti" : "Input Data Cuti"}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-slate-800 border-slate-700 text-white max-w-lg">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingRequest ? "Edit Data Cuti" : isEmployee ? "Form Pengajuan Cuti" : "Form Input Data Cuti"}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingRequest
+                    ? "Ubah detail data cuti di bawah ini."
+                    : isEmployee ? "Isi detail pengajuan cuti di bawah ini." : "Isi detail data cuti di bawah ini."}
+                </DialogDescription>
+              </DialogHeader>
+              {isEmployee ? (
+                <EmployeeLeaveRequestForm
+                  onSubmit={async (data) => {
+                    await createProposal(data);
+                    onFormSubmitSuccess();
+                  }}
+                  onCancel={() => {
+                    setIsFormOpen(false);
+                    setEditingRequest(null);
+                  }}
+                />
+              ) : (
                 <LeaveRequestForm
                   employees={employees}
                   leaveTypes={leaveTypes}
@@ -424,9 +438,10 @@ const LeaveRequests = () => {
                   }}
                   initialData={editingRequest}
                 />
-              </DialogContent>
-            </Dialog>
-          )}
+              )}
+            </DialogContent>
+          </Dialog>
+        </div>
         </div>
       </motion.div>
 

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -53,7 +53,7 @@ const getMenuItemsByPermissions = (permissions = [], user) => {
       return true;
     if (
       item.label === "Usulan Cuti" &&
-      (user?.role === "employee" || user?.role === "admin_unit")
+      user?.role === "admin_unit"
     )
       return true;
     if (
