@@ -33,11 +33,8 @@ function getSimpelClient() {
 function createSimpelClient(token) {
   const url = SIMPEL_URL;
   const key = SIMPEL_ANON_KEY;
-  // Hindari GoTrueClient ganda jika URL sama dengan project SiCuti
-  const storageKey =
-    url && url === import.meta.env.VITE_SUPABASE_URL
-      ? "sb-simpel-sso-proxy"
-      : "sb-simpel-query-client";
+  // Gunakan storageKey yang UNIK dan JANGAN sama dengan SiCuti client!
+  const storageKey = "sb-simpel-sso-query-v2";
 
   return createClient(url, key, {
     ...createDisabledAuthOptions(storageKey),
