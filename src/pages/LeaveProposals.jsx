@@ -187,49 +187,8 @@ const LeaveProposals = () => {
         setEditingProposal(null);
         setShowCreateForm(false);
       } else {
-        // Create new proposal
-        const proposerUnit = isEmployee
-          ? proposalData.proposer_unit
-          : (currentUser.department || "Unknown");
-
-        const { data: proposal, error: proposalError } = await supabase
-          .from("leave_proposals")
-          .insert({
-            proposal_title: proposalData.title,
-            proposed_by: currentUser.id,
-            proposer_name: currentUser.name,
-            proposer_unit: proposerUnit,
-            notes: proposalData.notes || "",
-            total_employees: proposalData.employees.length,
-            status: "pending",
-          })
-          .select()
-          .single();
-        if (proposalError) throw proposalError;
-
-        const proposalItems = proposalData.employees.map(emp => ({
-          proposal_id: proposal.id,
-          employee_id: emp.employee_id,
-          employee_name: emp.employee_name,
-          employee_nip: emp.employee_nip,
-          employee_department: emp.employee_department,
-          employee_position: emp.employee_position || "",
-          leave_type_id: emp.leave_type_id,
-          leave_type_name: emp.leave_type_name,
-          start_date: emp.start_date,
-          end_date: emp.end_date,
-          days_requested: emp.days_requested,
-          leave_quota_year: emp.leave_quota_year,
-          leave_period: emp.leave_period || emp.leave_quota_year,
-          reason: emp.reason || "",
-          address_during_leave: emp.address_during_leave || "",
-          application_form_date: emp.application_form_date || null,
-          status: "proposed",
-        }));
-
-        const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
-        if (itemsError) throw itemsError;
-
+        // Use the hook's createProposal which already handles inserting items
+        await createProposal(proposalData);
         toast({
           title: "Berhasil",
           description: isEmployee
@@ -237,7 +196,6 @@ const LeaveProposals = () => {
             : "Usulan cuti berhasil dibuat",
         });
         setShowCreateForm(false);
-        fetchProposals();
       }
     } catch (error) {
       toast({ variant: "destructive", title: editingProposal ? "Gagal Memperbarui Usulan" : "Gagal Membuat Usulan", description: error.message });

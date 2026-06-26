@@ -29,8 +29,27 @@ export const useLeaveProposals = () => {
         // Admin unit can only see proposals from their unit
         query = query.eq("proposer_unit", currentUser.department);
       } else if (currentUser.role === 'employee') {
-        // Employee can only see their own proposals
-        query = query.eq("proposed_by", currentUser.id);
+        // Employee can see:
+        // 1. Proposals they created (proposed_by)
+        // 2. Proposals that include them as an employee (leave_proposal_items.employee_id)
+        // First, fetch all proposal items that include the employee
+        const { data: employeeItems, error: itemsError } = await supabase
+          .from("leave_proposal_items")
+          .select("proposal_id")
+          .eq("employee_id", currentUser.employee_id || currentUser.id);
+
+        if (itemsError) throw itemsError;
+
+        const employeeProposalIds = employeeItems?.map(item => item.proposal_id) || [];
+
+        // Then fetch all proposals where either:
+        // - proposed_by = currentUser.id OR
+        // - id is in employeeProposalIds
+        if (employeeProposalIds.length > 0) {
+          query = query.or(`proposed_by.eq.${currentUser.id},id.in.(${employeeProposalIds.join(",")})`);
+        } else {
+          query = query.eq("proposed_by", currentUser.id);
+        }
       }
       // Master admin can see all proposals (no additional filter needed)
 
@@ -96,16 +115,18 @@ export const useLeaveProposals = () => {
       }
 
       const proposerUnit = currentUser.department || "Unknown";
+      // Use employee_id if available (for SSO users from SIMPEL), otherwise use currentUser.id
+      const proposerId = currentUser.employee_id || currentUser.id;
 
       const { data, error } = await supabase
         .from("leave_proposals")
         .insert({
           proposal_title: proposalData.title || `Pengajuan Cuti - ${currentUser.name}`,
-          proposed_by: currentUser.id,
+          proposed_by: proposerId,
           proposer_name: currentUser.name,
           proposer_unit: proposerUnit,
           notes: proposalData.notes || "",
-          total_employees: proposalData.total_employees || 1,
+          total_employees: proposalData.employees?.length || 1,
           status: 'pending',
         })
         .select()
@@ -113,11 +134,39 @@ export const useLeaveProposals = () => {
 
       if (error) throw error;
 
+      // If there are employees in proposalData, insert them into leave_proposal_items
+      if (proposalData.employees && proposalData.employees.length > 0) {
+        const proposalItems = proposalData.employees.map(emp => ({
+          proposal_id: data.id,
+          employee_id: emp.employee_id,
+          employee_name: emp.employee_name,
+          employee_nip: emp.employee_nip,
+          employee_department: emp.employee_department,
+          employee_position: emp.employee_position || "",
+          employee_rank: emp.employee_rank || "",
+          leave_type_id: emp.leave_type_id,
+          leave_type_name: emp.leave_type_name,
+          start_date: emp.start_date,
+          end_date: emp.end_date,
+          days_requested: emp.days_requested,
+          leave_quota_year: emp.leave_quota_year,
+          leave_period: emp.leave_period || emp.leave_quota_year,
+          reason: emp.reason || "",
+          address_during_leave: emp.address_during_leave || "",
+          application_form_date: emp.application_form_date || null,
+          status: "pending",
+        }));
+
+        const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
+        if (itemsError) throw itemsError;
+      }
+
       toast({
         title: "Success",
         description: "Usulan/Pengajuan cuti berhasil dibuat",
       });
 
+      await fetchProposals();
       return data;
     } catch (err) {
       console.error("Error creating proposal:", err);
@@ -128,7 +177,7 @@ export const useLeaveProposals = () => {
       });
       throw err;
     }
-  }, [toast]);
+  }, [toast, fetchProposals]);
 
   const updateProposalStatus = useCallback(async (proposalId, status, data = {}) => {
     try {

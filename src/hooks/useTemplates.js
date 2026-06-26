@@ -1,4 +1,4 @@
-﻿/**
+/**
  * useTemplates - Shared hook untuk memuat template DOCX dari Supabase.
  * Menggunakan module-level cache agar template tidak dimuat ulang
  * setiap kali komponen di-mount.
@@ -34,11 +34,14 @@ async function fetchTemplatesFromSupabase() {
   let query = supabase.from("templates").select("*");
 
   if (currentUser.role === "admin_pusat") {
+    // Admin pusat gets all global templates
     query = query.eq("template_scope", "global");
   } else if (currentUser.role === "admin_unit") {
+    // Admin unit gets global templates AND their own unit templates
     const userUnit = currentUser.department;
     if (!userUnit) throw new Error("Admin unit must have a unit assigned");
-    query = query.eq("template_scope", "unit").eq("unit_scope", userUnit);
+    // Use .or to fetch both types
+    query = query.or(`and(template_scope.eq.global),and(template_scope.eq.unit,unit_scope.eq.${userUnit})`);
   } else {
     throw new Error("Insufficient permissions to access templates");
   }
