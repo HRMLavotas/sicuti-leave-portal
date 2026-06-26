@@ -1,7 +1,6 @@
 ﻿import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AuthManager } from "@/lib/auth";
-import { getAuthSsoApiUrl } from "@/lib/supabaseSSO";
 import { Loader2, AlertCircle } from "lucide-react";
 
 /**
@@ -12,14 +11,6 @@ import { Loader2, AlertCircle } from "lucide-react";
  */
 
 const SIMPEL_AUTH_URL = "https://sipandai.site/auth";
-
-function getSicutiOrigin() {
-  return import.meta.env.VITE_SICUTI_APP_URL || window.location.origin;
-}
-
-function getSicutiCallbackUrl() {
-  return `${getSicutiOrigin().replace(/\/$/, "")}/auth/callback`;
-}
 
 function getPermissionsForRole(role) {
   if (role === "admin_pusat")    return ["all"];
@@ -57,7 +48,7 @@ const AuthCallback = () => {
       if (!code && !access_token) {
         console.warn("[AuthCallback] Tidak ada token/code, redirect ke SIPANDAI");
         window.location.replace(
-          `${SIMPEL_AUTH_URL}?redirect=${encodeURIComponent(getSicutiCallbackUrl())}`
+          `${SIMPEL_AUTH_URL}?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`
         );
         return;
       }
@@ -65,7 +56,7 @@ const AuthCallback = () => {
       setStatusMsg(code ? "Menukar kode autentikasi..." : "Memulai sesi...");
 
       try {
-        const res = await fetch(getAuthSsoApiUrl(), {
+        const res = await fetch("/api/auth-sso", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -74,22 +65,21 @@ const AuthCallback = () => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "SSO exchange gagal");
 
+        // Simpan ke AuthManager — SiCuti pakai localStorage, bukan Supabase Auth
         const role = data.user?.role || "employee";
-
-        await AuthManager.establishSsoSession({
-          user: {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.name,
-            role,
-            department: data.user.department || "Belum Ditetapkan",
-            unit_kerja: data.user.department || "Belum Ditetapkan",
-            nip: data.user.nip || null,
-            employee_id: data.user.employee_id || null,
-            permissions: data.user.permissions || getPermissionsForRole(role),
-          },
-          session: data.session,
-          simpel_session: data.simpel_session,
+        AuthManager.setUserSession({
+          id:            data.user.id,
+          email:         data.user.email,
+          name:          data.user.name,
+          role,
+          department:    data.user.department || "Belum Ditetapkan",
+          unit_kerja:    data.user.department || "Belum Ditetapkan",
+          nip:           data.user.nip || null,
+          employee_id:   data.user.employee_id || null,
+          permissions:   getPermissionsForRole(role),
+          access_token:  data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          last_login:    new Date().toISOString(),
         });
 
         setStatusMsg("Berhasil! Mengalihkan...");
@@ -119,7 +109,7 @@ const AuthCallback = () => {
           <h2 className="text-white font-semibold text-lg">Login SSO Gagal</h2>
           <p className="text-slate-400 text-sm leading-relaxed">{errorMsg}</p>
           <a
-            href={`${SIMPEL_AUTH_URL}?redirect=${encodeURIComponent(getSicutiCallbackUrl())}`}
+            href={`${SIMPEL_AUTH_URL}?redirect=${encodeURIComponent(window.location.origin + "/auth/callback")}`}
             className="inline-flex items-center justify-center gap-2 w-full rounded-xl bg-purple-600 hover:bg-purple-500 text-white px-5 py-2.5 text-sm font-semibold transition-colors"
           >
             Kembali ke Portal SIPANDAI

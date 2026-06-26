@@ -40,7 +40,7 @@ async function redeemCode(code) {
 
   const payload = await res.json();
   if (!res.ok) throw new Error(payload.error || "Gagal menukar authorization code");
-  return payload;
+  return payload; // { access_token, refresh_token, user_id }
 }
 
 async function getSimpelUser(accessToken) {
@@ -64,9 +64,7 @@ async function enrichUserFromSimpel(userId, email) {
   const simpelUrl = process.env.SIMPEL_URL;
   const simpelServiceKey = process.env.SIMPEL_SERVICE_ROLE_KEY;
 
-  if (!simpelServiceKey) {
-    return { profile: null, role: "employee", nip: extractNip(email, null), simpelEmployee: null };
-  }
+  if (!simpelServiceKey) return { profile: null, role: "employee", nip: extractNip(email, null), employeeId: null, simpelEmployee: null };
 
   const admin = createClient(simpelUrl, simpelServiceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -78,29 +76,25 @@ async function enrichUserFromSimpel(userId, email) {
   ]);
 
   const nip = extractNip(email, profile?.nip);
+  let employeeId = null;
   let simpelEmployee = null;
 
   if (nip) {
-    const { data: emp } = await admin
-      .from("employees")
-      .select("id, nip, name, department, position_name, rank_group")
-      .eq("nip", nip)
-      .maybeSingle();
+    const { data: emp } = await admin.from("employees").select("id, nip, name, department, position_name, rank_group").eq("nip", nip).maybeSingle();
     simpelEmployee = emp;
+    employeeId = emp?.id ?? null;
   }
-  if (!simpelEmployee) {
-    const { data: emp } = await admin
-      .from("employees")
-      .select("id, nip, name, department, position_name, rank_group")
-      .eq("id", userId)
-      .maybeSingle();
+  if (!employeeId) {
+    const { data: emp } = await admin.from("employees").select("id, nip, name, department, position_name, rank_group").eq("id", userId).maybeSingle();
     simpelEmployee = emp;
+    employeeId = emp?.id ?? null;
   }
 
   return {
     profile,
     role: roleRow?.role || "employee",
     nip,
+    employeeId,
     simpelEmployee,
   };
 }
@@ -139,7 +133,9 @@ async function ensureLocalEmployeeId(sicutiAdmin, nip, profile, simpelEmployee, 
 }
 
 /**
- * SSO exchange — hanya ambil user dari SIMPEL tanpa membuat user di SiCuti Auth
+ * SSO exchange — kembalikan data user + token SIMPEL langsung.
+ * SiCuti menggunakan AuthManager (localStorage), bukan Supabase Auth SiCuti.
+ * Tidak perlu provision/create user di Supabase SiCuti.
  */
 export async function exchangeSsoCredentials(body) {
   const { code, access_token, refresh_token } = body ?? {};
@@ -158,7 +154,7 @@ export async function exchangeSsoCredentials(body) {
   }
 
   const simpelUser = await getSimpelUser(simpelAccessToken);
-  const { profile, role, nip, simpelEmployee } = await enrichUserFromSimpel(
+  const { profile, role, nip, employeeId, simpelEmployee } = await enrichUserFromSimpel(
     simpelUser.id,
     simpelUser.email,
   );
@@ -184,27 +180,22 @@ export async function exchangeSsoCredentials(body) {
     );
   }
 
-  const ssoUser = {
-    id: simpelUser.id,
-    email: simpelUser.email,
-    name: profile?.full_name || meta.full_name || simpelUser.email,
-    role,
-    department,
-    nip,
-    employee_id: localEmployeeId,
-    permissions: permissionsForRole(role),
-  };
-
   return {
-    user: ssoUser,
-    session: {
-      access_token: "",
-      refresh_token: "",
-      expires_at: 0,
+    user: {
+      id:          simpelUser.id,
+      email:       simpelUser.email,
+      name:        profile?.full_name || meta.full_name || simpelUser.email,
+      role,
+      department:  department,
+      nip,
+      employee_id: localEmployeeId,
+      permissions: permissionsForRole(role),
     },
-    simpel_session: {
-      access_token: simpelAccessToken,
+    // Kembalikan token SIMPEL — AuthCallback di SiCuti akan simpan ke AuthManager
+    session: {
+      access_token:  simpelAccessToken,
       refresh_token: simpelRefreshToken,
+      expires_at:    0,
     },
     provider: "simpel",
   };

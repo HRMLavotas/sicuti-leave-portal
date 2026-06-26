@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient";
+﻿import { supabase } from "./supabaseClient";
 import { AuditLogger, AUDIT_EVENTS } from "./auditLogger";
 
 /**
@@ -27,19 +27,6 @@ export class AuthManager {
     };
   }
 
-  /**
-   * Setelah SSO: simpan user ke localStorage.
-   */
-  static async establishSsoSession({ user, session, simpel_session }) {
-    this.setSsoSession({
-      ...user,
-      permissions: user.permissions || [],
-      access_token: simpel_session?.access_token,
-      refresh_token: simpel_session?.refresh_token,
-      last_login: new Date().toISOString(),
-    });
-  }
-
   static async setSession(session) {
     if (!session?.access_token) {
       throw new Error("Session token tidak valid");
@@ -53,22 +40,15 @@ export class AuthManager {
     if (error) throw error;
   }
 
-  /**
-   * Simpan sesi SSO (token SIMPEL + profil user) ke localStorage.
-   * Dipakai setelah /api/auth-sso — bukan Supabase Auth SiCuti.
-   */
-  static setSsoSession(user) {
+  /** @deprecated Gunakan setSession dari SSO exchange */
+  static setUserSession(user) {
+    console.warn("[AuthManager] setUserSession deprecated — gunakan setSession via SSO exchange");
     try {
       localStorage.setItem("user_data", JSON.stringify(user));
     } catch (error) {
-      console.error("Failed to set SSO session:", error);
+      console.error("Failed to set user session:", error);
       throw new Error("Failed to save login session");
     }
-  }
-
-  /** @deprecated Gunakan setSsoSession */
-  static setUserSession(user) {
-    this.setSsoSession(user);
   }
 
   static getUserSession() {
@@ -177,25 +157,14 @@ export class AuthManager {
   }
 }
 
-// Sinkronkan cache hanya dari Supabase Auth SiCuti (login native).
-// Jangan hapus cache SSO saat tidak ada session SiCuti — user SSO pakai token SIMPEL.
+// Sinkronkan localStorage cache dengan Supabase Auth state
 if (typeof window !== "undefined") {
   supabase.auth.onAuthStateChange((_event, session) => {
     const user = AuthManager.mapUserFromSession(session);
     if (user) {
-      const existing = AuthManager.getUserSession();
-      localStorage.setItem(
-        "user_data",
-        JSON.stringify({
-          ...user,
-          permissions:
-            user.permissions?.length
-              ? user.permissions
-              : existing?.permissions || [],
-          access_token: existing?.access_token,
-          refresh_token: existing?.refresh_token,
-        }),
-      );
+      localStorage.setItem("user_data", JSON.stringify(user));
+    } else {
+      localStorage.removeItem("user_data");
     }
   });
 }
