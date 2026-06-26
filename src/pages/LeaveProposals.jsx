@@ -456,11 +456,38 @@ const LeaveProposals = () => {
                 rows={2} className="bg-slate-700/50 border-slate-600/50 mt-1 text-white" />
             </div>
           </div>
-          <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50">
-            <Button variant="outline" onClick={() => setShowApprovalDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
-            <Button onClick={handleApproveSubmit} disabled={submitting || signers.length === 0} className="bg-green-600 hover:bg-green-700">
-              {submitting ? "Memproses..." : "Setujui & Terbitkan"}
+          <div className="flex justify-between pt-3 border-t border-slate-700/50">
+            <Button variant="outline" onClick={async () => {
+                try {
+                  toast({ title: "Menyiapkan dokumen...", description: "Mohon tunggu sebentar." });
+                  await downloadLeaveProposalLetter({
+                    proposal: {
+                      ...targetProposal,
+                      letter_number: letterNumber,
+                      letter_date: letterDate,
+                    },
+                    proposalItems: targetProposal.leave_proposal_items || [],
+                    organization: {
+                      name: currentUser?.department || "UNIT KERJA",
+                      department: currentUser?.department || "",
+                      address: "",
+                      city: "",
+                      phone: "",
+                      email: "",
+                    },
+                  });
+                } catch (err) {
+                  toast({ variant: "destructive", title: "Gagal Generate Surat", description: err.message });
+                }
+            }} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">
+              <Printer className="w-4 h-4 mr-2" /> Pratinjau Surat
             </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowApprovalDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">Batal</Button>
+              <Button onClick={handleApproveSubmit} disabled={submitting || signers.length === 0} className="bg-green-600 hover:bg-green-700">
+                {submitting ? "Memproses..." : "Setujui & Terbitkan"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

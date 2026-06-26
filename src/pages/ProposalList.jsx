@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { 
   List, 
@@ -756,24 +756,73 @@ const ProposalList = () => {
               />
             </div>
           </div>
-          <div className="flex justify-end space-x-2 pt-4">
-            <Button
-              variant="outline"
-              onClick={() => setShowApprovalDialog(false)}
-              className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
-            >
-              Batal
-            </Button>
-            <Button
-              onClick={handleSubmitApproval}
-              disabled={approvalAction === 'reject' && !approvalNotes.trim()}
-              className={approvalAction === 'approve'
-                ? "bg-green-600 hover:bg-green-700 text-white"
-                : "bg-red-600 hover:bg-red-700 text-white"
-              }
-            >
-              {approvalAction === 'approve' ? 'Setujui' : 'Tolak'}
-            </Button>
+          <div className="flex justify-between pt-4 border-t border-slate-600/50">
+            {approvalAction === 'approve' && (
+              <Button variant="outline" onClick={async () => {
+                try {
+                  toast({
+                    title: "Info",
+                    description: "Sedang membuat surat usulan...",
+                  });
+
+                  // Fetch proposal items
+                  const { data: proposalItems, error } = await supabase
+                    .from("leave_proposal_items")
+                    .select("*")
+                    .eq("proposal_id", selectedProposal.id)
+                    .order("employee_name");
+
+                  if (error) throw error;
+
+                  if (!proposalItems || proposalItems.length === 0) {
+                    throw new Error("Tidak ada data pegawai dalam usulan");
+                  }
+
+                  // Prepare data for letter generation
+                  const proposalData = {
+                    proposal: {
+                      ...selectedProposal,
+                      letter_number: letterNumber,
+                      letter_date: letterDate,
+                    },
+                    proposalItems: proposalItems,
+                  };
+
+                  // Generate and download letter
+                  const filename = `Usulan_Cuti_${selectedProposal.proposer_unit}_${letterNumber?.replace(/\//g, '_') || 'Draft'}.docx`;
+                  await downloadLeaveProposalLetter(proposalData, filename);
+
+                } catch (error) {
+                  console.error("Error generating letter:", error);
+                  toast({
+                    title: "Error",
+                    description: "Gagal membuat surat usulan: " + error.message,
+                    variant: "destructive",
+                  });
+                }
+              }} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">
+                <Download className="w-4 h-4 mr-2" /> Pratinjau Surat
+              </Button>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowApprovalDialog(false)}
+                className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600"
+              >
+                Batal
+              </Button>
+              <Button
+                onClick={handleSubmitApproval}
+                disabled={approvalAction === 'reject' && !approvalNotes.trim()}
+                className={approvalAction === 'approve'
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-red-600 hover:bg-red-700 text-white"
+                }
+              >
+                {approvalAction === 'approve' ? 'Setujui' : 'Tolak'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
