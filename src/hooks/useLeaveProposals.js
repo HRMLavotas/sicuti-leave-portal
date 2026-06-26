@@ -385,7 +385,7 @@ export const useLeaveProposals = () => {
       await finalizeApprovedProposalItems({
         proposalId,
         items,
-        approvalData: approvalType === "issue_letter" ? approvalData : {},
+        approvalData,
         shouldDeductBalance: !["approved", "processed"].includes(proposalBeforeApproval?.status),
       });
 
@@ -397,9 +397,11 @@ export const useLeaveProposals = () => {
         notes: approvalData.notes || "",
       };
 
-      // Only set letter fields if we're issuing a letter
-      if (approvalType === "issue_letter") {
+      // Simpan detail surat jika sudah diisi di dialog approval, termasuk mode buat surat nanti.
+      if (approvalData.letter_number) {
         updateData.letter_number = approvalData.letter_number;
+      }
+      if (approvalData.letter_date) {
         updateData.letter_date = approvalData.letter_date;
       }
 

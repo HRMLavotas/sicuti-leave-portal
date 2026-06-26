@@ -189,7 +189,10 @@ const LeaveRequests = () => {
         );
         const proposalRows = (proposals || [])
           .filter((proposal) => {
-            if (proposal.status === "approved" && approvedProposalIds.has(proposal.id)) {
+            if (
+              ["approved", "processed"].includes(proposal.status) &&
+              approvedProposalIds.has(proposal.id)
+            ) {
               return false;
             }
             return ["pending", "approved", "rejected", "forwarded", "processed"].includes(proposal.status);

@@ -223,7 +223,7 @@ const LeaveProposals = () => {
       await approveEmployeeProposal(targetProposal.id, targetProposal.leave_proposal_items, {
         letter_number: letterNumber,
         letter_date: letterDate,
-        signed_by: approvalType === "issue_letter" ? selectedSigner : "",
+        signed_by: selectedSigner || "",
         notes: approvalNotes,
       }, approvalType);
       setShowApprovalDialog(false);
