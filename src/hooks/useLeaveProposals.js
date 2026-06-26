@@ -230,17 +230,24 @@ export const useLeaveProposals = () => {
         finalStatus = "processed";
       }
 
-      // 2. Update the proposal status
+      // 2. Build update data
+      const updateData = {
+        status: finalStatus,
+        approved_by: currentUser.id,
+        approved_date: new Date().toISOString(),
+        notes: approvalData.notes || "",
+      };
+
+      // Only set letter fields if we're issuing a letter
+      if (approvalType === "issue_letter") {
+        updateData.letter_number = approvalData.letter_number;
+        updateData.letter_date = approvalData.letter_date;
+      }
+
+      // Update the proposal status
       const { error: updateErr } = await supabase
         .from("leave_proposals")
-        .update({
-          status: finalStatus,
-          approved_by: currentUser.id,
-          approved_date: new Date().toISOString(),
-          letter_number: approvalData.letter_number,
-          letter_date: approvalData.letter_date,
-          notes: approvalData.notes || "",
-        })
+        .update(updateData)
         .eq("id", proposalId);
 
       if (updateErr) throw updateErr;
@@ -263,9 +270,10 @@ export const useLeaveProposals = () => {
       await fetchProposals();
     } catch (err) {
       console.error("Error approving employee proposal:", err);
+      const errorMsg = err?.message || err?.error_description || JSON.stringify(err);
       toast({
         title: "Error",
-        description: "Gagal menyetujui pengajuan: " + err.message,
+        description: "Gagal menyetujui pengajuan: " + errorMsg,
         variant: "destructive",
       });
       throw err;
