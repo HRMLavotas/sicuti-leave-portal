@@ -1,4 +1,4 @@
-﻿import { supabase } from "./supabaseClient";
+import { supabase } from "./supabaseClient";
 import { AuditLogger, AUDIT_EVENTS } from "./auditLogger";
 
 /**
@@ -28,27 +28,12 @@ export class AuthManager {
   }
 
   /**
-   * Setelah SSO: sesi Supabase SiCuti (RLS) + token SIMPEL di cache.
+   * Setelah SSO: simpan user ke localStorage.
    */
   static async establishSsoSession({ user, session, simpel_session }) {
-    if (!session?.access_token) {
-      throw new Error("Session SiCuti tidak valid");
-    }
-
-    const { error } = await supabase.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token || "",
-    });
-    if (error) throw error;
-
-    const mapped = this.mapUserFromSession(
-      (await supabase.auth.getSession()).data.session,
-    );
-
     this.setSsoSession({
-      ...(mapped || user),
       ...user,
-      permissions: user.permissions || mapped?.permissions || [],
+      permissions: user.permissions || [],
       access_token: simpel_session?.access_token,
       refresh_token: simpel_session?.refresh_token,
       last_login: new Date().toISOString(),

@@ -2,6 +2,7 @@ import { exchangeSsoCredentials } from "./_lib/ssoExchange.js";
 
 const ALLOWED_ORIGINS = [
   "https://cuti.sipandai.site",
+  "https://sipandai.site",
   "http://localhost:5173",
   "http://localhost:4173",
 ];

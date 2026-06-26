@@ -138,90 +138,8 @@ async function ensureLocalEmployeeId(sicutiAdmin, nip, profile, simpelEmployee, 
   return data?.id ?? null;
 }
 
-async function provisionSicutiUser(user) {
-  const sicutiUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const sicutiServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!sicutiUrl || !sicutiServiceKey) {
-    throw new Error(
-      "SUPABASE_URL dan SUPABASE_SERVICE_ROLE_KEY wajib di environment server (Vercel)",
-    );
-  }
-
-  const sicutiAdmin = createClient(sicutiUrl, sicutiServiceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const metadata = {
-    full_name: user.name,
-    department: user.department,
-    role: user.role,
-    nip: user.nip,
-    employee_id: user.employee_id,
-    sso_provider: "simpel",
-    permissions: user.permissions,
-  };
-
-  const { data: existing } = await sicutiAdmin.auth.admin.getUserById(user.id);
-
-  if (!existing?.user) {
-    const { error: createError } = await sicutiAdmin.auth.admin.createUser({
-      id: user.id,
-      email: user.email,
-      email_confirm: true,
-      user_metadata: metadata,
-      app_metadata: { provider: "sso", providers: ["sso"] },
-    });
-    if (createError) throw createError;
-  } else {
-    const { error: updateError } = await sicutiAdmin.auth.admin.updateUserById(user.id, {
-      user_metadata: metadata,
-    });
-    if (updateError) throw updateError;
-  }
-
-  try {
-    const { data: sessionData, error: createSessionError } =
-      await sicutiAdmin.auth.admin.createSession({ user_id: user.id });
-
-    if (!createSessionError && sessionData.session) {
-      return {
-        access_token: sessionData.session.access_token,
-        refresh_token: sessionData.session.refresh_token,
-        expires_at: sessionData.session.expires_at ?? 0,
-      };
-    }
-  } catch {
-    // fallback magic link
-  }
-
-  const { data: linkData, error: linkError } = await sicutiAdmin.auth.admin.generateLink({
-    type: "magiclink",
-    email: user.email,
-  });
-
-  if (linkError || !linkData?.properties?.hashed_token) {
-    throw new Error("Gagal membuat session SiCuti");
-  }
-
-  const { data: sessionData, error: sessionError } = await sicutiAdmin.auth.verifyOtp({
-    token_hash: linkData.properties.hashed_token,
-    type: "email",
-  });
-
-  if (sessionError || !sessionData.session) {
-    throw new Error("Gagal verifikasi session SiCuti");
-  }
-
-  return {
-    access_token: sessionData.session.access_token,
-    refresh_token: sessionData.session.refresh_token,
-    expires_at: sessionData.session.expires_at ?? 0,
-  };
-}
-
 /**
- * SSO exchange — provision user SiCuti + session RLS + token SIMPEL untuk query pegawai.
+ * SSO exchange — hanya ambil user dari SIMPEL tanpa membuat user di SiCuti Auth
  */
 export async function exchangeSsoCredentials(body) {
   const { code, access_token, refresh_token } = body ?? {};
@@ -248,19 +166,23 @@ export async function exchangeSsoCredentials(body) {
   const meta = simpelUser.user_metadata || {};
   const department = profile?.department || meta.department || "Belum Ditetapkan";
 
+  let localEmployeeId = null;
   const sicutiUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const sicutiServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const sicutiAdmin = createClient(sicutiUrl, sicutiServiceKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 
-  const localEmployeeId = await ensureLocalEmployeeId(
-    sicutiAdmin,
-    nip,
-    profile,
-    simpelEmployee,
-    department,
-  );
+  if (sicutiUrl && sicutiServiceKey) {
+    const sicutiAdmin = createClient(sicutiUrl, sicutiServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    localEmployeeId = await ensureLocalEmployeeId(
+      sicutiAdmin,
+      nip,
+      profile,
+      simpelEmployee,
+      department,
+    );
+  }
 
   const ssoUser = {
     id: simpelUser.id,
@@ -273,14 +195,12 @@ export async function exchangeSsoCredentials(body) {
     permissions: permissionsForRole(role),
   };
 
-  const session = await provisionSicutiUser(ssoUser);
-
   return {
     user: ssoUser,
     session: {
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-      expires_at: session.expires_at,
+      access_token: "",
+      refresh_token: "",
+      expires_at: 0,
     },
     simpel_session: {
       access_token: simpelAccessToken,
