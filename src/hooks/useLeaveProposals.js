@@ -228,6 +228,7 @@ export const useLeaveProposals = () => {
             signed_by: data.signed_by || "",
             leave_letter_number: data.letter_number || "",
             leave_letter_date: data.letter_date || null,
+            proposal_id: proposalId,
           };
 
           // Insert into leave_requests
@@ -310,6 +311,7 @@ export const useLeaveProposals = () => {
             signed_by: approvalData.signed_by,
             leave_letter_number: approvalData.letter_number,
             leave_letter_date: approvalData.letter_date,
+            proposal_id: proposalId,
           };
 
           // Insert into leave_requests

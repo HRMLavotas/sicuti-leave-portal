@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   FileText,
@@ -108,9 +108,10 @@ const LeaveRequests = () => {
         .select(
           `
           *,
+          proposal_id,
           employees:employee_id!inner (id, name, nip, department, rank_group),
           leave_types!inner (id, name)
-        `,
+        `
         )
         .order("submitted_date", { ascending: false });
 
@@ -284,7 +285,7 @@ const LeaveRequests = () => {
   const handleDeleteRequest = async (requestId) => {
     if (
       !window.confirm(
-        "Apakah Anda yakin ingin menghapus data cuti ini? Saldo cuti pegawai akan dikembalikan.",
+        "Apakah Anda yakin ingin menghapus data cuti ini? Saldo cuti pegawai akan dikembalikan dan usulan cuti terkait juga akan dihapus."
       )
     ) {
       return;
@@ -294,12 +295,7 @@ const LeaveRequests = () => {
       const requestToDelete = leaveRequests.find((r) => r.id === requestId);
       if (!requestToDelete) throw new Error("Data cuti tidak ditemukan.");
 
-      const { error: deleteError } = await supabase
-        .from("leave_requests")
-        .delete()
-        .eq("id", requestId);
-      if (deleteError) throw deleteError;
-
+      // First, revert the leave balance
       const requestPeriodYear =
         parseInt(requestToDelete.leave_period) ||
         new Date(requestToDelete.start_date).getFullYear();
@@ -311,14 +307,32 @@ const LeaveRequests = () => {
           p_leave_type_id: requestToDelete.leave_type_id,
           p_requested_year: requestPeriodYear,
           p_days: -requestToDelete.days_requested,
-        },
+        }
       );
       if (rpcError)
         console.error(`Gagal mengembalikan saldo cuti:`, rpcError.message);
 
+      // If there's a linked proposal, delete it (items will delete due to ON DELETE CASCADE)
+      if (requestToDelete.proposal_id) {
+        const { error: proposalDeleteErr } = await supabase
+          .from("leave_proposals")
+          .delete()
+          .eq("id", requestToDelete.proposal_id);
+        if (proposalDeleteErr) {
+          console.error("Gagal menghapus usulan cuti:", proposalDeleteErr);
+        }
+      }
+
+      // Delete the leave request itself
+      const { error: deleteError } = await supabase
+        .from("leave_requests")
+        .delete()
+        .eq("id", requestId);
+      if (deleteError) throw deleteError;
+
       toast({
-        title: "ï¿½ï¿½ï¿½ Data Dihapus",
-        description: "Data cuti berhasil dihapus dan saldo telah dikembalikan.",
+        title: "Berhasil",
+        description: "Data cuti dan usulan terkait berhasil dihapus dan saldo telah dikembalikan.",
       });
       fetchLeaveRequests();
     } catch (error) {
