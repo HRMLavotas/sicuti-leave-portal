@@ -311,12 +311,15 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
       if (result && result.leave_proposal_items && result.leave_proposal_items.length > 0) {
         setProposalItemId(result.leave_proposal_items[0].id);
         
-        // Show success toast with option to upload documents
+        // Show success toast
         toast({
           title: "Pengajuan Cuti Berhasil Dibuat",
-          description: "Anda sekarang dapat melampirkan dokumen pendukung di bawah.",
+          description: "Pengajuan cuti berhasil dibuat. Dokumen yang dilampirkan sudah tersimpan.",
         });
       }
+      
+      // Call onSubmitSuccess to close form
+      onSubmitSuccess();
     } finally {
       setIsSubmitting(false);
     }
@@ -512,7 +515,7 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
         </div>
       </div>
 
-      {/* ── Tanggal formulir ── */}
+      {/* ── Tanggal formulir & Upload Dokumen ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label className="text-slate-300">
@@ -525,6 +528,28 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
             className="mt-1 bg-slate-700 border-slate-600 text-white"
             disabled={!canSubmit}
           />
+        </div>
+        
+        {/* Upload Dokumen Formulir Cuti */}
+        <div>
+          <Label className="text-slate-300 flex items-center gap-2">
+            Lampiran Formulir Cuti
+            <Badge variant="outline" className="bg-blue-900/30 text-blue-300 border-blue-600 text-xs">
+              Opsional
+            </Badge>
+          </Label>
+          <div className="mt-1">
+            <LeaveDocumentUploader
+              leaveProposalItemId={proposalItemId}
+              slot={{
+                code: 'formulir_cuti',
+                label: 'Formulir Permohonan Cuti',
+                required: false,
+              }}
+              readonly={!canSubmit}
+              onChange={() => setDocumentsRefresh(prev => prev + 1)}
+            />
+          </div>
         </div>
       </div>
 
@@ -550,35 +575,15 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
         </div>
       </div>
 
-      {/* ── Upload Dokumen Pendukung ── */}
-      {proposalItemId && (
-        <div className="space-y-3">
-          <div className="border-t border-slate-600 pt-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-semibold text-slate-200">Dokumen Pendukung</h3>
-              <Badge variant="outline" className="bg-blue-900/30 text-blue-300 border-blue-600">
-                Opsional
-              </Badge>
-            </div>
-            <div className="bg-blue-900/20 border border-blue-700/40 rounded p-3 mb-4">
-              <p className="text-xs text-blue-300">
-                💡 Upload dokumen pendukung untuk pengajuan cuti Anda (opsional).
-                Dokumen akan diunggah ke Google Drive dan dapat diakses oleh Admin Unit untuk verifikasi.
-              </p>
-            </div>
-          </div>
-
-          <LeaveDocumentUploader
-            leaveProposalItemId={proposalItemId}
-            slot={{
-              code: 'formulir_cuti',
-              label: 'Formulir Permohonan Cuti',
-              required: false,
-            }}
-            readonly={false}
-            onChange={() => setDocumentsRefresh(prev => prev + 1)}
-          />
-
+      {/* ── Dokumen Pendukung Tambahan ── */}
+      <div>
+        <Label className="text-slate-300 flex items-center gap-2">
+          Lampiran Dokumen Pendukung Lainnya
+          <Badge variant="outline" className="bg-blue-900/30 text-blue-300 border-blue-600 text-xs">
+            Opsional
+          </Badge>
+        </Label>
+        <div className="mt-1">
           <LeaveDocumentUploader
             leaveProposalItemId={proposalItemId}
             slot={{
@@ -586,15 +591,14 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
               label: 'Surat Keterangan Pendukung (jika ada)',
               required: false,
             }}
-            readonly={false}
+            readonly={!canSubmit}
             onChange={() => setDocumentsRefresh(prev => prev + 1)}
           />
-          
-          <div className="bg-green-900/20 border border-green-700/40 rounded p-3 text-xs text-green-300">
-            ✓ Dokumen telah tersimpan. Anda dapat menutup form ini atau upload dokumen tambahan.
-          </div>
         </div>
-      )}
+        <p className="text-xs text-slate-400 mt-1">
+          💡 Contoh: Surat keterangan dokter, undangan, atau dokumen pendukung lainnya
+        </p>
+      </div>
 
       {/* ── Catatan alur ── */}
       {!proposalItemId && (
@@ -607,29 +611,17 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
 
       {/* ── Actions ── */}
       <div className="flex justify-end gap-3 pt-2">
-        {proposalItemId ? (
-          <Button
-            type="button"
-            onClick={onCancel}
-            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-          >
-            Selesai
-          </Button>
-        ) : (
-          <>
-            <Button type="button" variant="outline" onClick={onCancel}
-              className="bg-slate-700 hover:bg-slate-600 border-slate-600 text-white">
-              Batal
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting || !canSubmit || !leaveTypeId || !startDate || !endDate || daysRequested <= 0}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-            >
-              {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Mengirim...</> : "Kirim Pengajuan Cuti"}
-            </Button>
-          </>
-        )}
+        <Button type="button" variant="outline" onClick={onCancel}
+          className="bg-slate-700 hover:bg-slate-600 border-slate-600 text-white">
+          Batal
+        </Button>
+        <Button
+          type="submit"
+          disabled={isSubmitting || !canSubmit || !leaveTypeId || !startDate || !endDate || daysRequested <= 0}
+          className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+        >
+          {isSubmitting ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Mengirim...</> : "Kirim Pengajuan Cuti"}
+        </Button>
       </div>
     </form>
   );
