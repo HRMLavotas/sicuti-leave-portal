@@ -20,6 +20,7 @@ import { id } from "date-fns/locale";
 import { validateLeaveProposal, validateEmployeeLeaveItem, sanitizeProposalData, checkLeaveConflicts } from "@/utils/leaveProposalValidation";
 import { countWorkingDays, fetchNationalHolidaysFromDB } from "@/utils/workingDays";
 import { attachSicutiEmployeeIds, resolveSicutiEmployeeIds } from "@/utils/sicutiEmployeeResolver";
+import { LeaveDocumentUploader } from "@/components/leave_documents/LeaveDocumentUploader";
 
 const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
   const { toast } = useToast();
@@ -54,6 +55,10 @@ const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
     reason: "",
     address_during_leave: "",
   });
+  
+  // Document upload state (for created proposal items)
+  const [createdProposalItemIds, setCreatedProposalItemIds] = useState([]);
+  const [documentsRefresh, setDocumentsRefresh] = useState(0);
 
   // Populate form with initial data when available
   useEffect(() => {
@@ -317,12 +322,32 @@ const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
       }
 
       const sanitizedData = sanitizeProposalData(proposalData);
-      await onSubmit(sanitizedData);
-
-      if (!isEmployee) {
-        setProposalTitle("");
-        setNotes("");
-        setSelectedEmployees([]);
+      const result = await onSubmit(sanitizedData);
+      
+      // Store created proposal item IDs for document upload
+      if (result && result.leave_proposal_items && result.leave_proposal_items.length > 0) {
+        setCreatedProposalItemIds(result.leave_proposal_items.map(item => item.id));
+        
+        toast({ 
+          title: isEmployee ? "Pengajuan Berhasil" : "Usulan Berhasil Dibuat", 
+          description: isEmployee 
+            ? "Pengajuan cuti Anda berhasil dibuat. Anda dapat melampirkan dokumen pendukung di bawah (opsional)."
+            : "Usulan cuti berhasil dibuat. Anda dapat melampirkan dokumen pendukung untuk setiap pegawai di bawah (opsional)."
+        });
+        
+        // Don't clear form or close modal - allow document upload
+      } else {
+        toast({ 
+          title: isEmployee ? "Pengajuan Berhasil" : "Usulan Berhasil Dibuat", 
+          description: isEmployee ? "Pengajuan cuti Anda berhasil dibuat." : "Usulan cuti berhasil dibuat."
+        });
+        
+        // Clear form for non-employee
+        if (!isEmployee) {
+          setProposalTitle("");
+          setNotes("");
+          setSelectedEmployees([]);
+        }
       }
     } catch (error) {
       console.error("Error submitting proposal:", error);
@@ -635,23 +660,103 @@ const LeaveProposalForm = ({ onSubmit, onCancel, initialData = null }) => {
         </Card>
       )}
 
+      {/* ── Upload Dokumen Pendukung ── */}
+      {createdProposalItemIds.length > 0 && (
+        <Card className="bg-slate-800/50 border-slate-700/50">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-white flex items-center">
+                <FileText className="w-5 h-5 mr-2" />
+                Dokumen Pendukung
+              </CardTitle>
+              <Badge variant="outline" className="bg-blue-900/30 text-blue-300 border-blue-600">
+                Opsional
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="bg-blue-900/20 border border-blue-700/40 rounded p-3 text-xs text-blue-300">
+              💡 Upload dokumen pendukung untuk setiap pengajuan cuti (opsional).
+              Dokumen akan diunggah ke Google Drive dan dapat diakses untuk verifikasi.
+            </div>
+
+            {createdProposalItemIds.map((itemId, index) => {
+              const employee = isEmployee 
+                ? currentLeaveItem 
+                : (selectedEmployees[index] || {});
+              
+              return (
+                <div key={itemId} className="space-y-3 p-4 bg-slate-700/20 rounded-lg border border-slate-600/50">
+                  <div className="flex items-center gap-3 pb-3 border-b border-slate-600/50">
+                    <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-xs font-bold">
+                        {employee.employee_name?.charAt(0) || "?"}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="text-white font-medium text-sm">{employee.employee_name || "Pegawai"}</h4>
+                      <p className="text-slate-400 text-xs">{employee.employee_nip || "-"}</p>
+                    </div>
+                  </div>
+
+                  <LeaveDocumentUploader
+                    leaveProposalItemId={itemId}
+                    slot={{
+                      code: 'formulir_cuti',
+                      label: 'Formulir Permohonan Cuti',
+                      required: false,
+                    }}
+                    readonly={false}
+                    onChange={() => setDocumentsRefresh(prev => prev + 1)}
+                  />
+
+                  <LeaveDocumentUploader
+                    leaveProposalItemId={itemId}
+                    slot={{
+                      code: 'surat_keterangan',
+                      label: 'Surat Keterangan Pendukung (jika ada)',
+                      required: false,
+                    }}
+                    readonly={false}
+                    onChange={() => setDocumentsRefresh(prev => prev + 1)}
+                  />
+                </div>
+              );
+            })}
+            
+            <div className="bg-green-900/20 border border-green-700/40 rounded p-3 text-xs text-green-300">
+              ✓ {isEmployee ? "Pengajuan" : "Usulan"} cuti berhasil dibuat. Dokumen sudah tersimpan atau dapat ditambahkan nanti.
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Actions */}
       <div className="flex justify-end space-x-3 pt-4">
         <Button variant="outline" onClick={onCancel} className="bg-slate-700 hover:bg-slate-600 border-slate-600">
           Batal
         </Button>
-        <Button
-          onClick={handleSubmitProposal}
-          disabled={
-            (isEmployee && (!isProfileReady || !currentLeaveItem.employee_id)) ||
-            (!isEmployee && selectedEmployees.length === 0)
-          }
-          className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-        >
-          {isEmployee
-            ? "Kirim Pengajuan Cuti"
-            : `Kirim Usulan (${selectedEmployees.length} pegawai)`}
-        </Button>
+        {createdProposalItemIds.length > 0 ? (
+          <Button
+            onClick={onCancel}
+            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+          >
+            Selesai
+          </Button>
+        ) : (
+          <Button
+            onClick={handleSubmitProposal}
+            disabled={
+              (isEmployee && (!isProfileReady || !currentLeaveItem.employee_id)) ||
+              (!isEmployee && selectedEmployees.length === 0)
+            }
+            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+          >
+            {isEmployee
+              ? "Kirim Pengajuan Cuti"
+              : `Kirim Usulan (${selectedEmployees.length} pegawai)`}
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -23,6 +23,7 @@ import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
 import { applyEmployeeScopeFilter, assertCanAccessSicutiEmployeeById } from "@/utils/employeeScope";
 import { Loader2, Search, X, Plus } from "lucide-react";
+import { LeaveDocumentUploader } from "@/components/leave_documents/LeaveDocumentUploader";
 import {
   countWorkingDays,
   fetchNationalHolidaysFromDB,
@@ -89,6 +90,10 @@ const LeaveRequestForm = ({
   const [leaveBalanceSummary, setLeaveBalanceSummary] = useState(null);
   const [isLoadingLeaveBalance, setIsLoadingLeaveBalance] = useState(false);
   const [leaveBalanceError, setLeaveBalanceError] = useState("");
+  
+  // Document upload state
+  const [leaveRequestId, setLeaveRequestId] = useState(null);
+  const [documentsRefresh, setDocumentsRefresh] = useState(0);
 
   const selectedLeaveType = useMemo(() => {
     return leaveTypes.find((t) => t.id === formData.leave_type_id) || null;
@@ -299,6 +304,7 @@ const LeaveRequestForm = ({
         application_form_date: new Date().toISOString().split("T")[0],
       });
       setSearchTerm("");
+      setLeaveRequestId(null); // Reset document upload state
     }
   }, [initialData]);
 
@@ -444,6 +450,7 @@ const LeaveRequestForm = ({
     setShowDropdown(false);
     setLeaveBalanceSummary(null);
     setLeaveBalanceError("");
+    setLeaveRequestId(null); // Reset document upload
   };
 
   const handleSelectSigner = (signer) => {
@@ -780,6 +787,11 @@ const LeaveRequestForm = ({
           .single();
         error = insertError;
         if (error) throw error;
+        
+        // Store leave request ID for document upload
+        if (insertedRequest?.id) {
+          setLeaveRequestId(insertedRequest.id);
+        }
 
         // Use smart splitting function for balance update
         const requestPeriodYear =
@@ -811,11 +823,19 @@ const LeaveRequestForm = ({
           ? ` (Jatah Cuti ${formData.leave_quota_year})`
           : "";
 
+      const successMsg = initialData?.id 
+        ? `Data cuti berhasil diperbarui${quotaYearInfo}.` 
+        : `Data cuti berhasil ditambahkan${quotaYearInfo}. Anda dapat melampirkan dokumen pendukung di bawah (opsional).`;
+      
       toast({
-        title: `âœ… Data Cuti ${initialData?.id ? "Diperbarui" : "Ditambahkan"}`,
-        description: `Data cuti berhasil ${initialData?.id ? "diperbarui" : "ditambahkan"}${quotaYearInfo}.`,
+        title: `✅ Data Cuti ${initialData?.id ? "Diperbarui" : "Ditambahkan"}`,
+        description: successMsg,
       });
-      onSubmitSuccess();
+      
+      // If editing, close form. If creating, stay open to allow document upload
+      if (initialData?.id) {
+        onSubmitSuccess();
+      }
     } catch (error) {
       console.error("Error submitting leave request:", error);
       toast({
@@ -1589,6 +1609,50 @@ const LeaveRequestForm = ({
         </div>
       </div>
 
+      {/* ── Upload Dokumen Pendukung ── */}
+      {leaveRequestId && (
+        <div className="space-y-3 px-4 pb-4">
+          <div className="border-t border-slate-700 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-slate-200">Dokumen Pendukung</h3>
+              <Badge variant="outline" className="bg-blue-900/30 text-blue-300 border-blue-600">
+                Opsional
+              </Badge>
+            </div>
+            <div className="bg-blue-900/20 border border-blue-700/40 rounded p-3 mb-4 text-xs text-blue-300">
+              💡 Upload dokumen pendukung untuk pengajuan cuti ini (opsional).
+              Dokumen akan diunggah ke Google Drive dan dapat diakses untuk verifikasi.
+            </div>
+          </div>
+
+          <LeaveDocumentUploader
+            leaveRequestId={leaveRequestId}
+            slot={{
+              code: 'formulir_cuti',
+              label: 'Formulir Permohonan Cuti',
+              required: false,
+            }}
+            readonly={false}
+            onChange={() => setDocumentsRefresh(prev => prev + 1)}
+          />
+
+          <LeaveDocumentUploader
+            leaveRequestId={leaveRequestId}
+            slot={{
+              code: 'surat_keterangan',
+              label: 'Surat Keterangan Pendukung (jika ada)',
+              required: false,
+            }}
+            readonly={false}
+            onChange={() => setDocumentsRefresh(prev => prev + 1)}
+          />
+          
+          <div className="bg-green-900/20 border border-green-700/40 rounded p-3 text-xs text-green-300">
+            ✓ Dokumen telah tersimpan. Anda dapat menutup form ini atau upload dokumen tambahan.
+          </div>
+        </div>
+      )}
+
       <div className="p-4 border-t border-slate-700 bg-slate-800/50">
         <div className="flex justify-end space-x-2">
           <Button
@@ -1599,20 +1663,30 @@ const LeaveRequestForm = ({
           >
             Batal
           </Button>
-          <Button
-            type="submit"
-            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
-            disabled={isSubmitting}
-          >
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isSubmitting
-              ? initialData?.id
-                ? "Memperbarui..."
-                : "Menyimpan..."
-              : initialData?.id
-                ? "Simpan Perubahan"
-                : "Simpan Data Cuti"}
-          </Button>
+          {leaveRequestId ? (
+            <Button
+              type="button"
+              onClick={onCancel}
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+            >
+              Selesai
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+              disabled={isSubmitting}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isSubmitting
+                ? initialData?.id
+                  ? "Memperbarui..."
+                  : "Menyimpan..."
+                : initialData?.id
+                  ? "Simpan Perubahan"
+                  : "Simpan Data Cuti"}
+            </Button>
+          )}
         </div>
       </div>
 
