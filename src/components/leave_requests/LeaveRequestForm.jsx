@@ -22,7 +22,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
 import { AuthManager } from "@/lib/auth";
 import { applyEmployeeScopeFilter, assertCanAccessSicutiEmployeeById } from "@/utils/employeeScope";
-import { Loader2, Search, X, Plus } from "lucide-react";
+import { Loader2, Search, X, Plus, Upload, FileText } from "lucide-react";
 import { LeaveDocumentUploader } from "@/components/leave_documents/LeaveDocumentUploader";
 import {
   countWorkingDays,
@@ -94,6 +94,8 @@ const LeaveRequestForm = ({
   // Document upload state
   const [leaveRequestId, setLeaveRequestId] = useState(null);
   const [documentsRefresh, setDocumentsRefresh] = useState(0);
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
 
   const selectedLeaveType = useMemo(() => {
     return leaveTypes.find((t) => t.id === formData.leave_type_id) || null;
@@ -589,6 +591,75 @@ const LeaveRequestForm = ({
     return countWorkingDays(start, end, holidays);
   };
 
+  const uploadDocument = async (requestId, file) => {
+    try {
+      const formData = new FormData();
+      formData.append('leave_request_id', requestId);
+      formData.append('slot_code', 'formulir_cuti');
+      formData.append('slot_label', 'Formulir Cuti & Dokumen Pendukung');
+      formData.append('file', file);
+
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/leave-doc-upload`;
+      
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `HTTP ${resp.status}`);
+      }
+
+      console.log('Document uploaded successfully');
+    } catch (error) {
+      console.error('Upload document error:', error);
+      toast({
+        title: 'Dokumen gagal diupload',
+        description: 'Data cuti berhasil disimpan, tapi dokumen gagal diupload. Anda bisa upload ulang nanti.',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (20MB)
+    if (file.size > 20 * 1024 * 1024) {
+      toast({
+        title: 'File terlalu besar',
+        description: 'Maksimal ukuran file adalah 20MB',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    // Validate file type
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 
+                          'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: 'Format file tidak didukung',
+        description: 'Hanya PDF, JPG, PNG, DOC, DOCX yang diperbolehkan',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    setUploadedFile(file);
+    setFilePreview(file.name);
+  };
+
+  const handleRemoveFile = () => {
+    setUploadedFile(null);
+    setFilePreview(null);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -796,6 +867,11 @@ const LeaveRequestForm = ({
         // Store leave request ID for document upload
         if (insertedRequest?.id) {
           setLeaveRequestId(insertedRequest.id);
+          
+          // Upload dokumen jika ada file yang dipilih
+          if (uploadedFile) {
+            await uploadDocument(insertedRequest.id, uploadedFile);
+          }
         }
 
         // Use smart splitting function for balance update
@@ -1336,25 +1412,48 @@ const LeaveRequestForm = ({
                 (Formulir & dokumen pendukung - Opsional)
               </span>
             </Label>
-            {!leaveRequestId && !initialData?.id && (
-              <div className="mt-1 p-3 bg-blue-900/20 border border-blue-700/40 rounded-md text-xs text-blue-300">
-                💡 Upload dokumen tersedia setelah data cuti disimpan
+            <div className="mt-1">
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                onChange={handleFileChange}
+                className="hidden"
+                id="file-upload-input"
+              />
+              <div className="rounded-md border border-slate-600 bg-slate-700 p-3 space-y-3">
+                {filePreview ? (
+                  <div className="flex items-center justify-between gap-2 rounded bg-slate-600/50 p-2 text-xs text-white">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <FileText className="h-4 w-4 text-slate-300 flex-shrink-0" />
+                      <span className="truncate">{filePreview}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleRemoveFile}
+                      className="h-6 w-6 p-0 text-slate-300 hover:text-white hover:bg-slate-600"
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById('file-upload-input').click()}
+                    className="w-full bg-slate-600 border-slate-500 text-white hover:bg-slate-500"
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    Pilih File (PDF, JPG, PNG, DOC, DOCX)
+                  </Button>
+                )}
+                <p className="text-xs text-slate-400">
+                  💡 File akan otomatis diupload ke Google Drive saat form disimpan
+                </p>
               </div>
-            )}
-            {(leaveRequestId || initialData?.id) && (
-              <div className="mt-1">
-                <LeaveDocumentUploader
-                  leaveRequestId={leaveRequestId || initialData?.id}
-                  slot={{
-                    code: 'formulir_cuti',
-                    label: 'Formulir Cuti & Dokumen Pendukung',
-                    required: false,
-                  }}
-                  readonly={false}
-                  onChange={() => setDocumentsRefresh(prev => prev + 1)}
-                />
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
