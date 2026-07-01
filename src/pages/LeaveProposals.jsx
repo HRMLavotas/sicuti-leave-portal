@@ -31,13 +31,16 @@ import { id } from "date-fns/locale";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
+import { getStatusConfig, canGenerateLetter, isLetterIssued } from "@/utils/proposalStatusHelper";
 
 const STATUS_CONFIG = {
   pending:   { label: "Menunggu",     color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30", icon: Clock },
-  approved:  { label: "Disetujui",    color: "bg-green-500/20 text-green-300 border-green-500/30",   icon: CheckCircle },
+  approved:  { label: "Disetujui (Legacy)",    color: "bg-green-500/20 text-green-300 border-green-500/30",   icon: CheckCircle },
+  awaiting_letter: { label: "Disetujui & Menunggu Surat", color: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30", icon: FileText },
+  letter_issued: { label: "Surat Sudah Diterbitkan", color: "bg-purple-500/20 text-purple-300 border-purple-500/30", icon: CheckCircle },
   rejected:  { label: "Ditolak",      color: "bg-red-500/20 text-red-300 border-red-500/30",         icon: XCircle },
   forwarded: { label: "Diteruskan ke Admin Pusat", color: "bg-blue-500/20 text-blue-300 border-blue-500/30", icon: Forward },
-  processed: { label: "Siap Buat Surat",     color: "bg-purple-500/20 text-purple-300 border-purple-500/30",   icon: FileText },
+  processed: { label: "Surat Sudah Diterbitkan (Legacy)",     color: "bg-purple-500/20 text-purple-300 border-purple-500/30",   icon: FileText },
 };
 
 const LETTER_ITEMS_PER_PAGE = 25;
@@ -1377,8 +1380,8 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
   const isEmployeeApprovalTab = isAdminUnit && activeTab === "employee-approvals";
   const isCreateLettersTab = isAdminUnit && activeTab === "create-letters";
   const canAct = isEmployeeApprovalTab && proposal.status === "pending";
-  const canPrint = isEmployeeApprovalTab && proposal.status === "approved";
-  const canCreateLetter = isCreateLettersTab && ["approved", "processed"].includes(proposal.status);
+  const canPrint = isEmployeeApprovalTab && (proposal.status === "awaiting_letter" || proposal.status === "approved");
+  const canCreateLetter = isCreateLettersTab && canGenerateLetter(proposal.status);
   const canEditOrDelete = isEmployee && proposal.status === "rejected";
   const canDeleteByAdminUnit =
     isAdminUnit && ["pending", "rejected", "processed"].includes(proposal.status);
@@ -1410,7 +1413,7 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
               <strong>Alasan Ditolak:</strong> {proposal.rejection_reason}
             </div>
           )}
-          {proposal.status === 'approved' && proposal.letter_number && (
+          {(proposal.status === 'awaiting_letter' || proposal.status === 'approved') && proposal.letter_number && (
             <div className="p-2 bg-green-950/30 border border-green-700/40 rounded text-sm text-green-400">
               <strong>Nomor Surat:</strong> {proposal.letter_number}
               {proposal.letter_date && ` — ${format(new Date(proposal.letter_date), "dd MMMM yyyy", { locale: id })}`}

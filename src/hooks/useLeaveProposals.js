@@ -379,12 +379,12 @@ export const useLeaveProposals = () => {
         proposalId,
         items,
         approvalData,
-        shouldDeductBalance: !["approved", "processed"].includes(proposalBeforeApproval?.status),
+        shouldDeductBalance: !["approved", "awaiting_letter", "letter_issued", "processed"].includes(proposalBeforeApproval?.status),
       });
 
-      // 2. Build update data
+      // 2. Build update data - use awaiting_letter for admin unit approval
       const updateData = {
-        status: "processed",
+        status: getNextStatusAfterApproval(), // awaiting_letter
         // Don't set approved_by due to foreign key constraint with SIMPLE SSO
         approved_date: new Date().toISOString(),
         notes: approvalData.notes || "",
@@ -402,7 +402,7 @@ export const useLeaveProposals = () => {
 
       toast({
         title: "Berhasil",
-        description: "Pengajuan cuti pegawai berhasil disetujui dan masuk ke tab Buat Surat Keterangan",
+        description: "Pengajuan cuti pegawai berhasil disetujui dan siap untuk generate surat keterangan",
       });
 
       await fetchProposals();
