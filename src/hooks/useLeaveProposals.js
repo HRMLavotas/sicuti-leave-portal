@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { AuthManager } from "@/lib/auth";
+import { getNextStatusAfterApproval } from "@/utils/proposalStatusHelper";
 
 const getPossibleEmployeeIdsForCurrentUser = async (currentUser) => {
   const ids = new Set([currentUser.employee_id, currentUser.id].filter(Boolean));
@@ -317,7 +318,7 @@ export const useLeaveProposals = () => {
         ...data,
       };
 
-      if (status === 'approved') {
+      if (status === getNextStatusAfterApproval() || status === 'awaiting_letter') {
         // Don't set approved_by due to foreign key constraint with SIMPLE SSO
         updateData.approved_date = new Date().toISOString();
 
@@ -332,7 +333,7 @@ export const useLeaveProposals = () => {
           proposalId,
           items: proposalItems,
           approvalData: data,
-          shouldDeductBalance: !["approved", "processed"].includes(proposalBeforeApproval?.status),
+          shouldDeductBalance: !["approved", "awaiting_letter", "letter_issued", "processed"].includes(proposalBeforeApproval?.status),
         });
       }
 

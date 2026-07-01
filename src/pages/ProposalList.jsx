@@ -13,6 +13,7 @@ import {
   Calendar as CalendarIcon,
   Download,
   Forward,
+  FileCheck,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ import { format } from "date-fns";
 import { id } from "date-fns/locale";
 import { downloadLeaveProposalLetter, generateProposalSummary } from "@/utils/leaveProposalLetterGenerator";
 import { supabase } from "@/lib/supabaseClient";
+import { getStatusConfig, canApprove, canGenerateLetter, isLetterIssued, getNextStatusAfterApproval, getNextStatusAfterLetterGeneration } from "@/utils/proposalStatusHelper";
+import { LeaveDetailModal } from "@/components/leave_proposals/LeaveDetailModal";
 
 const ProposalList = () => {
   const { toast } = useToast();
@@ -43,6 +46,8 @@ const ProposalList = () => {
   
   const [selectedProposal, setSelectedProposal] = useState(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [showLeaveDetailModal, setShowLeaveDetailModal] = useState(false);
+  const [selectedLeaveRequestId, setSelectedLeaveRequestId] = useState(null);
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
   const [approvalAction, setApprovalAction] = useState(null); // 'approve' or 'reject'
   const [approvalNotes, setApprovalNotes] = useState("");
@@ -93,16 +98,19 @@ const ProposalList = () => {
   const units = [...new Set(proposals.map(p => p.proposer_unit))];
 
   const getStatusBadge = (status) => {
-    const statusConfig = {
-      pending:   { label: "Menunggu",              color: "bg-yellow-500/20 text-yellow-300 border border-yellow-500/40" },
-      forwarded: { label: "Diteruskan Admin Unit",  color: "bg-blue-500/20 text-blue-300 border border-blue-500/40" },
-      approved:  { label: "Disetujui",              color: "bg-green-500/20 text-green-300 border border-green-500/40" },
-      rejected:  { label: "Ditolak",               color: "bg-red-500/20 text-red-300 border border-red-500/40" },
-      processed: { label: "Diproses",              color: "bg-slate-500/20 text-slate-300 border border-slate-500/40" },
-      completed: { label: "Selesai",               color: "bg-purple-500/20 text-purple-300 border border-purple-500/40" },
+    const cfg = getStatusConfig(status);
+    const iconMap = { 
+      Clock, Forward, CheckCircle, XCircle, FileText, FileCheck,
+      pending: Clock, 
+      forwarded: Forward, 
+      approved: CheckCircle, 
+      rejected: XCircle, 
+      awaiting_letter: FileText,
+      letter_issued: FileCheck,
+      processed: FileCheck,
+      completed: CheckCircle 
     };
-    const cfg = statusConfig[status] || statusConfig.pending;
-    const Icon = { pending: Clock, forwarded: Forward, approved: CheckCircle, rejected: XCircle, processed: FileText, completed: CheckCircle }[status] || Clock;
+    const Icon = iconMap[cfg.icon] || iconMap[status] || Clock;
     return (
       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.color}`}>
         <Icon className="w-3 h-3" />
@@ -138,7 +146,8 @@ const ProposalList = () => {
         updateData.rejection_reason = approvalNotes;
       }
 
-      await updateProposalStatus(selectedProposal.id, approvalAction === 'approve' ? 'approved' : 'rejected', updateData);
+      const newStatus = approvalAction === 'approve' ? getNextStatusAfterApproval() : 'rejected';
+      await updateProposalStatus(selectedProposal.id, newStatus, updateData);
 
       setShowApprovalDialog(false);
       setSelectedProposal(null);
@@ -189,8 +198,8 @@ const ProposalList = () => {
       const filename = `Usulan_Cuti_${proposal.proposer_unit}_${proposal.letter_number?.replace(/\//g, '_') || 'Draft'}.docx`;
       await downloadLeaveProposalLetter(proposalData, filename);
 
-      // Update proposal status to processed
-      await updateProposalStatus(proposal.id, 'processed', {});
+      // Update proposal status to letter_issued
+      await updateProposalStatus(proposal.id, getNextStatusAfterLetterGeneration(), {});
 
       toast({
         title: "Success",
@@ -231,7 +240,7 @@ const ProposalList = () => {
         const proposal = proposals.find(p => p.id === proposalId);
         const letterNum = `SRT/CUTI/${new Date().getFullYear()}/${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
 
-        await updateProposalStatus(proposalId, 'approved', {
+        await updateProposalStatus(proposalId, getNextStatusAfterApproval(), {
           letter_number: letterNum,
           letter_date: format(new Date(), "yyyy-MM-dd"),
           notes: "Approved via bulk action"
@@ -334,9 +343,9 @@ const ProposalList = () => {
                   <CheckCircle className="w-6 h-6 text-green-400" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-slate-400 text-sm">Disetujui</p>
+                  <p className="text-slate-400 text-sm">Disetujui/Menunggu Surat</p>
                   <p className="text-2xl font-bold text-white">
-                    {proposals.filter(p => p.status === 'approved').length}
+                    {proposals.filter(p => p.status === 'awaiting_letter' || p.status === 'approved').length}
                   </p>
                 </div>
               </div>
@@ -384,9 +393,11 @@ const ProposalList = () => {
                     <SelectItem value="all">Semua Status</SelectItem>
                     <SelectItem value="pending">Menunggu</SelectItem>
                     <SelectItem value="forwarded">Diteruskan Admin Unit</SelectItem>
-                    <SelectItem value="approved">Disetujui</SelectItem>
+                    <SelectItem value="approved">Disetujui (Legacy)</SelectItem>
+                    <SelectItem value="awaiting_letter">Disetujui & Menunggu Surat</SelectItem>
+                    <SelectItem value="letter_issued">Surat Sudah Diterbitkan</SelectItem>
                     <SelectItem value="rejected">Ditolak</SelectItem>
-                    <SelectItem value="processed">Diproses</SelectItem>
+                    <SelectItem value="processed">Diproses (Legacy)</SelectItem>
                     <SelectItem value="completed">Selesai</SelectItem>
                   </SelectContent>
                 </Select>
@@ -490,9 +501,20 @@ const ProposalList = () => {
                             </p>
                           </div>
                         )}
-                        {proposal.status === 'approved' && proposal.letter_number && (
-                          <div className="mt-2 p-2 bg-green-900/20 border border-green-700/50 rounded">
-                            <p className="text-green-400 text-sm">
+                        {proposal.status === 'awaiting_letter' && proposal.letter_number && (
+                          <div className="mt-2 p-2 bg-indigo-900/20 border border-indigo-700/50 rounded">
+                            <p className="text-indigo-400 text-sm">
+                              <strong>No. Surat:</strong> {proposal.letter_number} 
+                              {proposal.letter_date && ` | Tanggal: ${format(new Date(proposal.letter_date), "dd MMM yyyy", { locale: id })}`}
+                              <br />
+                              <FileText className="w-3 h-3 inline mr-1 mt-1" />
+                              <strong>Status:</strong> Menunggu generate surat keterangan
+                            </p>
+                          </div>
+                        )}
+                        {(proposal.status === 'letter_issued' || proposal.status === 'processed') && proposal.letter_number && (
+                          <div className="mt-2 p-2 bg-purple-900/20 border border-purple-700/50 rounded">
+                            <p className="text-purple-400 text-sm">
                               <strong>No. Surat:</strong> {proposal.letter_number} 
                               {proposal.letter_date && ` | Tanggal: ${format(new Date(proposal.letter_date), "dd MMM yyyy", { locale: id })}`}
                             </p>
@@ -508,7 +530,7 @@ const ProposalList = () => {
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
-                        {(proposal.status === 'pending' || proposal.status === 'forwarded') && (
+                        {canApprove(proposal.status) && (
                           <>
                             {proposal.status === 'forwarded' && (
                               <span className="flex items-center text-xs text-blue-400 px-2 border border-blue-500/30 rounded-md bg-blue-500/10">
@@ -534,17 +556,17 @@ const ProposalList = () => {
                             </Button>
                           </>
                         )}
-                        {(proposal.status === 'approved' || proposal.status === 'processed') && (
+                        {canGenerateLetter(proposal.status) && (
                           <Button
                             size="sm"
                             onClick={() => handleGenerateLetter(proposal)}
-                            className={proposal.status === 'approved'
+                            className={proposal.status === 'awaiting_letter'
                               ? "bg-blue-600 hover:bg-blue-700 text-white"
                               : "border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"}
-                            variant={proposal.status === 'processed' ? "outline" : undefined}
+                            variant={isLetterIssued(proposal.status) ? "outline" : undefined}
                           >
                             <Download className="w-4 h-4 mr-1" />
-                            {proposal.status === 'approved' ? 'Generate Surat' : 'Download Ulang'}
+                            {proposal.status === 'awaiting_letter' ? 'Generate Surat' : 'Download Ulang'}
                           </Button>
                         )}
                       </div>
@@ -670,9 +692,9 @@ const ProposalList = () => {
               )}
             </div>
           )}
-          {selectedProposal && (selectedProposal.status === 'approved' || selectedProposal.status === 'pending' || selectedProposal.status === 'forwarded') && (
+          {selectedProposal && (canApprove(selectedProposal.status) || canGenerateLetter(selectedProposal.status)) && (
             <div className="flex justify-end space-x-2 pt-4 border-t border-slate-600/50">
-              {(selectedProposal.status === 'pending' || selectedProposal.status === 'forwarded') && (
+              {canApprove(selectedProposal.status) && (
                 <>
                   <Button
                     variant="destructive" size="sm"
@@ -688,13 +710,13 @@ const ProposalList = () => {
                   </Button>
                 </>
               )}
-              {selectedProposal.status === 'approved' && (
+              {canGenerateLetter(selectedProposal.status) && (
                 <Button
                   onClick={() => { setShowDetailDialog(false); handleGenerateLetter(selectedProposal); }}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Generate & Download Surat
+                  {selectedProposal.status === 'awaiting_letter' ? 'Generate & Download Surat' : 'Download Ulang Surat'}
                 </Button>
               )}
             </div>
@@ -826,6 +848,13 @@ const ProposalList = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Leave Detail Modal for viewing documents */}
+      <LeaveDetailModal
+        open={showLeaveDetailModal}
+        onOpenChange={setShowLeaveDetailModal}
+        leaveRequestId={selectedLeaveRequestId}
+      />
     </div>
   );
 };
