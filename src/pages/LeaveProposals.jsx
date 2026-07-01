@@ -1377,6 +1377,10 @@ const LeaveProposals = () => {
 
 // ─── ProposalCard ───────────────────────────────────────────────────────────
 function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint, onEdit, onDelete, onCreateLetter }) {
+  const [documents, setDocuments] = React.useState([]);
+  const [loadingDocs, setLoadingDocs] = React.useState(false);
+  const [showDetails, setShowDetails] = React.useState(false);
+
   const isEmployeeApprovalTab = isAdminUnit && activeTab === "employee-approvals";
   const isCreateLettersTab = isAdminUnit && activeTab === "create-letters";
   const canAct = isEmployeeApprovalTab && proposal.status === "pending";
@@ -1387,13 +1391,51 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
     isAdminUnit && ["pending", "rejected", "processed"].includes(proposal.status);
   const canDelete = canEditOrDelete || canDeleteByAdminUnit;
 
+  // Fetch documents for proposal items
+  React.useEffect(() => {
+    const fetchDocuments = async () => {
+      if (!proposal.leave_proposal_items?.length) return;
+      
+      setLoadingDocs(true);
+      try {
+        const itemIds = proposal.leave_proposal_items.map(item => item.id);
+        
+        const { data, error } = await supabase
+          .from('leave_documents')
+          .select('*')
+          .in('leave_proposal_item_id', itemIds)
+          .order('uploaded_at', { ascending: false });
+
+        if (error) throw error;
+        setDocuments(data || []);
+      } catch (error) {
+        console.error('Error fetching documents:', error);
+      } finally {
+        setLoadingDocs(false);
+      }
+    };
+
+    if (showDetails) {
+      fetchDocuments();
+    }
+  }, [proposal.leave_proposal_items, showDetails]);
+
   return (
     <div className="p-4 bg-slate-700/30 rounded-lg border border-slate-600/50 hover:bg-slate-700/50 transition-colors">
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
+        <div 
+          className="flex-1 min-w-0 cursor-pointer"
+          onClick={() => setShowDetails(!showDetails)}
+        >
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <h3 className="font-semibold text-white text-base">{proposal.proposal_title}</h3>
             <StatusBadge status={proposal.status} />
+            <button 
+              className="ml-auto text-slate-400 hover:text-white transition-colors"
+              onClick={(e) => { e.stopPropagation(); setShowDetails(!showDetails); }}
+            >
+              <Eye className="w-4 h-4" />
+            </button>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400 mb-2">
             <span>📅 {format(new Date(proposal.proposal_date || proposal.created_at), "dd MMM yyyy", { locale: id })}</span>
@@ -1482,9 +1524,9 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
       </div>
 
       {/* Items preview */}
-      {proposal.leave_proposal_items?.length > 0 && (
+      {showDetails && proposal.leave_proposal_items?.length > 0 && (
         <div className="mt-3 pt-3 border-t border-slate-700/50">
-          <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-2">Detail:</span>
+          <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-2">Detail Pegawai:</span>
           <div className="space-y-1.5">
             {proposal.leave_proposal_items.map((item, i) => (
               <div key={i} className="flex flex-col sm:flex-row sm:items-center justify-between text-sm bg-slate-800/25 px-3 py-1.5 rounded">
@@ -1502,6 +1544,73 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Documents section */}
+      {showDetails && (
+        <div className="mt-3 pt-3 border-t border-slate-700/50">
+          <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-2">
+            Lampiran Dokumen ({documents.length})
+          </span>
+          {loadingDocs ? (
+            <div className="text-center py-4 text-slate-400 text-sm">
+              <Clock className="w-4 h-4 animate-spin mx-auto mb-2" />
+              Memuat dokumen...
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="text-center py-4 text-slate-400 text-sm">
+              <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              Tidak ada dokumen yang dilampirkan
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {documents.map((doc) => (
+                <div 
+                  key={doc.id} 
+                  className="flex items-start justify-between gap-3 bg-slate-800/40 px-3 py-2 rounded border border-slate-700/30"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileText className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span className="text-sm font-medium text-white truncate">{doc.slot_label}</span>
+                      {doc.verification_status === 'approved' && (
+                        <Badge className="bg-green-600 text-white text-xs px-1.5 py-0">
+                          <CheckCircle className="w-3 h-3 mr-0.5" />
+                          Verified
+                        </Badge>
+                      )}
+                      {doc.verification_status === 'rejected' && (
+                        <Badge className="bg-red-600 text-white text-xs px-1.5 py-0">
+                          <XCircle className="w-3 h-3 mr-0.5" />
+                          Rejected
+                        </Badge>
+                      )}
+                    </div>
+                    {doc.file_name && (
+                      <p className="text-xs text-slate-400 truncate">{doc.file_name}</p>
+                    )}
+                    {doc.uploaded_at && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {format(new Date(doc.uploaded_at), 'dd MMM yyyy HH:mm', { locale: id })}
+                      </p>
+                    )}
+                  </div>
+                  {(doc.drive_view_url || doc.external_link) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-blue-600 hover:bg-blue-700 border-blue-500 text-white flex-shrink-0 px-2 py-1 h-auto"
+                      onClick={() => window.open(doc.drive_view_url || doc.external_link, '_blank')}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1" />
+                      Lihat
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
