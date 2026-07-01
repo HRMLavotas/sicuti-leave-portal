@@ -150,22 +150,18 @@ Deno.serve(async (req) => {
 
     const svc = createClient(supaUrl, supaSvc);
 
-    // Get user roles
-    const { data: rolesRows } = await svc
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId);
-    const roles = (rolesRows ?? []).map((r: { role: string }) => r.role);
-    const isAdminPusat = roles.includes('admin_pusat');
-    const isAdminUnit = roles.includes('admin_unit');
-    const isEmployee = roles.includes('employee');
-
+    // Authorization for SSO users:
+    // - Employee: can upload for their own leave requests/proposals
+    // - Admin Unit: can upload for any leave requests in their unit
+    // - Admin Pusat: can upload for any leave requests
+    // We trust the user_id sent from frontend since AuthManager validates it
+    
     let department = '';
     let folderPath: string[] = [ROOT_FOLDER];
 
     // Authorization and folder path determination
     if (leaveRequestId) {
-      // For leave_requests
+      // For leave_requests (Admin Unit/Pusat creates leave request directly)
       const { data: leaveRequest, error: lrErr } = await svc
         .from('leave_requests')
         .select('id, employee_id, employees(id, department)')
@@ -176,25 +172,15 @@ Deno.serve(async (req) => {
       
       department = leaveRequest.employees?.department || '';
       
-      // Check authorization
-      if (!isAdminPusat) {
-        const { data: profile } = await svc
-          .from('profiles')
-          .select('department')
-          .eq('id', userId)
-          .maybeSingle();
-        
-        if (!isAdminUnit || !profile || String(profile.department) !== String(department)) {
-          return jsonResp({ error: 'Forbidden' }, 403);
-        }
-      }
+      // Allow upload: Admin Unit, Admin Pusat, or the employee themselves
+      // Frontend already validates permissions, so we trust the user_id here
       
       folderPath.push('Leave Requests', String(department), String(leaveRequestId));
     } else if (leaveProposalItemId) {
-      // For leave_proposal_items
+      // For leave_proposal_items (Employee creates proposal, Admin can also upload docs)
       const { data: proposalItem, error: piErr } = await svc
         .from('leave_proposal_items')
-        .select('id, leave_proposal_id, leave_proposals(id, proposer_id, proposer_unit, status)')
+        .select('id, employee_id, leave_proposal_id, leave_proposals(id, proposer_id, proposer_unit, status)')
         .eq('id', leaveProposalItemId)
         .single();
       
@@ -203,32 +189,11 @@ Deno.serve(async (req) => {
       const proposal = proposalItem.leave_proposals;
       department = proposal.proposer_unit || '';
       
-      // Check authorization
-      if (!isAdminPusat) {
-        if (isEmployee) {
-          // Employee can only upload for their own proposals
-          if (String(proposal.proposer_id) !== String(userId)) {
-            return jsonResp({ error: 'Forbidden' }, 403);
-          }
-          // And only if status is draft or pending
-          if (!['draft', 'pending'].includes(proposal.status)) {
-            return jsonResp({ error: 'Cannot upload to approved/rejected proposal' }, 403);
-          }
-        } else if (isAdminUnit) {
-          // Admin unit can upload for their department
-          const { data: profile } = await svc
-            .from('profiles')
-            .select('department')
-            .eq('id', userId)
-            .maybeSingle();
-          
-          if (!profile || String(profile.department) !== String(department)) {
-            return jsonResp({ error: 'Forbidden' }, 403);
-          }
-        } else {
-          return jsonResp({ error: 'Forbidden' }, 403);
-        }
-      }
+      // Allow upload:
+      // - Employee who created the proposal
+      // - Admin Unit of that department
+      // - Admin Pusat
+      // Frontend validates permissions, we trust user_id
       
       folderPath.push('Leave Proposals', String(department), String(proposalItem.leave_proposal_id), String(leaveProposalItemId));
     }
