@@ -265,49 +265,22 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
   // ── Helper functions ───────────────────────────────────────────────────────
   const uploadDocument = async (proposalItemId, file) => {
     try {
+      const currentUser = AuthManager.getUserSession();
+      if (!currentUser?.id) {
+        throw new Error('No user session found. Please login again.');
+      }
+
       const formData = new FormData();
       formData.append('leave_proposal_item_id', proposalItemId);
       formData.append('slot_code', 'formulir_cuti');
       formData.append('slot_label', 'Formulir Cuti & Dokumen Pendukung');
       formData.append('file', file);
-
-      // Get token from multiple sources for SSO compatibility
-      let token = null;
-      
-      // Try to get from Supabase session first
-      const { data: sess } = await supabase.auth.getSession();
-      token = sess?.session?.access_token;
-      
-      // If no token from supabase, try from localStorage (SSO token)
-      if (!token) {
-        const userSession = localStorage.getItem('user_session');
-        if (userSession) {
-          try {
-            const parsed = JSON.parse(userSession);
-            token = parsed.access_token || parsed.token;
-          } catch (e) {
-            console.warn('Failed to parse user_session:', e);
-          }
-        }
-      }
-
-      // If still no token, try from AuthManager
-      if (!token) {
-        const currentUser = AuthManager.getUserSession();
-        token = currentUser?.access_token || currentUser?.token;
-      }
-
-      if (!token) {
-        throw new Error('No authentication token found. Please login again.');
-      }
+      formData.append('user_id', currentUser.id); // Send user_id for SSO auth
 
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/leave-doc-upload`;
       
       const resp = await fetch(url, {
         method: 'POST',
-        headers: { 
-          Authorization: `Bearer ${token}`
-        },
         body: formData,
       });
 

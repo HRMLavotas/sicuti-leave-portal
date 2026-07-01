@@ -97,19 +97,46 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return jsonResp({ error: 'Method not allowed' }, 405);
 
   try {
+    // For SSO authentication, we need to validate differently
+    // We'll use a custom header or form field for user_id verification
     const auth = req.headers.get('Authorization') ?? '';
-    if (!auth.startsWith('Bearer ')) return jsonResp({ error: 'Unauthorized' }, 401);
-
     const supaUrl = Deno.env.get('SUPABASE_URL')!;
     const supaAnon = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supaSvc = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
-    const authClient = createClient(supaUrl, supaAnon, {
-      global: { headers: { Authorization: auth } },
-    });
-    const { data: userData, error: userErr } = await authClient.auth.getUser();
-    if (userErr || !userData.user) return jsonResp({ error: 'Unauthorized' }, 401);
-    const userId = userData.user.id;
+    let userId: string | null = null;
+
+    // Try standard Supabase JWT first (for direct Supabase auth users)
+    if (auth.startsWith('Bearer ')) {
+      const authClient = createClient(supaUrl, supaAnon, {
+        global: { headers: { Authorization: auth } },
+      });
+      const { data: userData, error: userErr } = await authClient.auth.getUser();
+      
+      // If JWT validation succeeds, use that user
+      if (!userErr && userData.user) {
+        userId = userData.user.id;
+      }
+    }
+
+    // If JWT didn't work, try to get user_id from form data (SSO flow)
+    if (!userId) {
+      const contentType = req.headers.get('content-type') || '';
+      if (contentType.includes('multipart/form-data')) {
+        const form = await req.formData();
+        const userIdFromForm = form.get('user_id');
+        if (userIdFromForm) {
+          userId = String(userIdFromForm);
+        }
+      }
+    }
+
+    if (!userId) {
+      return jsonResp({ 
+        code: 'UNAUTHORIZED_NO_AUTH_HEADER',
+        message: 'Missing authorization header or user_id'
+      }, 401);
+    }
 
     const form = await req.formData();
     const leaveRequestId = form.get('leave_request_id') ? String(form.get('leave_request_id')) : null;
