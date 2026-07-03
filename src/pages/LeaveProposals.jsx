@@ -328,26 +328,31 @@ const LeaveProposals = () => {
   const handleOpenBatchDialog = async (proposal) => {
     setSelectedProposalForBatch(proposal);
 
-    // Try to load letter details from leave_requests that were saved during approval
+    // Load letter details dari leave_proposals (disimpan saat approval)
+    // dengan fallback ke leave_requests untuk data lama
     let fetchedLetterNumber = proposal.letter_number || "";
     let fetchedLetterDate = proposal.letter_date || format(new Date(), "yyyy-MM-dd");
-    let fetchedSignedBy = "";
+    let fetchedSignedBy = proposal.signed_by || "";
 
-    try {
-      const { data: leaveReqs } = await supabase
-        .from("leave_requests")
-        .select("leave_letter_number, leave_letter_date, signed_by")
-        .eq("proposal_id", proposal.id)
-        .limit(1);
+    // Jika proposal belum punya signed_by (data lama sebelum kolom ditambah),
+    // fallback query ke leave_requests
+    if (!fetchedSignedBy) {
+      try {
+        const { data: leaveReqs } = await supabase
+          .from("leave_requests")
+          .select("leave_letter_number, leave_letter_date, signed_by")
+          .eq("proposal_id", proposal.id)
+          .limit(1);
 
-      if (leaveReqs && leaveReqs.length > 0) {
-        const lr = leaveReqs[0];
-        if (lr.leave_letter_number) fetchedLetterNumber = lr.leave_letter_number;
-        if (lr.leave_letter_date) fetchedLetterDate = lr.leave_letter_date;
-        if (lr.signed_by) fetchedSignedBy = lr.signed_by;
+        if (leaveReqs && leaveReqs.length > 0) {
+          const lr = leaveReqs[0];
+          if (!fetchedLetterNumber && lr.leave_letter_number) fetchedLetterNumber = lr.leave_letter_number;
+          if (!fetchedLetterDate && lr.leave_letter_date) fetchedLetterDate = lr.leave_letter_date;
+          if (lr.signed_by) fetchedSignedBy = lr.signed_by;
+        }
+      } catch (e) {
+        console.warn("Could not fetch letter details from leave_requests:", e);
       }
-    } catch (e) {
-      console.warn("Could not fetch letter details from leave_requests:", e);
     }
 
     setLetterDetails({
@@ -357,14 +362,12 @@ const LeaveProposals = () => {
     });
     setSignerSearchTerm(fetchedSignedBy);
     setDebouncedSignerSearchTerm("");
-    
-    // First, analyze and group leave requests by type
+
+    // Analyze and group leave requests by type
     const leaveTypeGroups = {};
     proposal.leave_proposal_items.forEach(item => {
       const leaveType = item.leave_type_name || "Jenis cuti tidak diketahui";
-      if (!leaveTypeGroups[leaveType]) {
-        leaveTypeGroups[leaveType] = [];
-      }
+      if (!leaveTypeGroups[leaveType]) leaveTypeGroups[leaveType] = [];
       leaveTypeGroups[leaveType].push({
         id: item.id,
         proposal_id: item.proposal_id || proposal.id,
@@ -386,14 +389,10 @@ const LeaveProposals = () => {
     });
 
     setLeaveTypeClassification(leaveTypeGroups);
-    
-    // Default: semua jenis cuti mode batch (all)
+
     const defaultSelection = {};
-    Object.keys(leaveTypeGroups).forEach(lt => {
-      defaultSelection[lt] = 'all';
-    });
+    Object.keys(leaveTypeGroups).forEach(lt => { defaultSelection[lt] = 'all'; });
     setSelectedEmployeeForLetter(defaultSelection);
-    
     setShowLetterEdit(false);
     setShowBatchDialog(true);
   };

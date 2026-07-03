@@ -402,6 +402,10 @@ export const useLeaveProposals = () => {
         // Don't set approved_by due to foreign key constraint with SIMPLE SSO
         approved_date: new Date().toISOString(),
         notes: approvalData.notes || "",
+        // Simpan letter_number dan letter_date ke leave_proposals untuk prefill
+        letter_number: approvalData.letter_number || "",
+        letter_date: approvalData.letter_date || null,
+        signed_by: approvalData.signed_by || "",
       };
 
       // Update the proposal status
