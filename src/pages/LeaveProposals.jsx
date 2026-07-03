@@ -240,6 +240,8 @@ const LeaveProposals = () => {
     setApprovalLetterNumber("");
     setApprovalLetterDate(format(new Date(), "yyyy-MM-dd"));
     setApprovalSignedBy("");
+    setSignerSearchTerm("");
+    setDebouncedSignerSearchTerm("");
     setShowApprovalDialog(true);
   };
   const openRejectDialog  = (proposal) => { setTargetProposal(proposal); setRejectionReason(""); setShowRejectDialog(true); };
@@ -1218,11 +1220,40 @@ const LeaveProposals = () => {
             <div>
               <Label className="text-slate-300">Penandatangan</Label>
               <Input
-                value={approvalSignedBy}
-                onChange={e => setApprovalSignedBy(e.target.value)}
-                placeholder="Nama pejabat penandatangan surat cuti"
+                value={signerSearchTerm}
+                onChange={e => {
+                  setSignerSearchTerm(e.target.value);
+                  setDebouncedSignerSearchTerm(e.target.value);
+                  setApprovalSignedBy(e.target.value);
+                }}
+                placeholder="Cari nama atau NIP pegawai..."
                 className="bg-slate-700/50 border-slate-600/50 mt-1 text-white placeholder:text-slate-500"
               />
+              {signerSearchTerm && (
+                <div className="mt-1 max-h-36 overflow-y-auto rounded-md border border-slate-700/50 bg-slate-900/60">
+                  {loadingSigners ? (
+                    <div className="px-3 py-2 text-sm text-slate-400">Mencari...</div>
+                  ) : signerOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-slate-400">Tidak ada pegawai ditemukan.</div>
+                  ) : (
+                    signerOptions.slice(0, 8).map((emp) => (
+                      <button
+                        key={emp.id}
+                        type="button"
+                        onClick={() => {
+                          setApprovalSignedBy(emp.name || "");
+                          setSignerSearchTerm(emp.name || "");
+                          setDebouncedSignerSearchTerm("");
+                        }}
+                        className="block w-full border-b border-slate-700/40 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-slate-700/60"
+                      >
+                        <span className="block font-medium text-white">{emp.name}</span>
+                        <span className="text-xs text-slate-400">{emp.nip || "-"} • {emp.position_name || "-"}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
             <div>
               <Label className="text-slate-300">Catatan (Opsional)</Label>
