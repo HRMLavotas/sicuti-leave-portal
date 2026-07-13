@@ -763,11 +763,11 @@ const LeaveRequestForm = ({
       formData.start_date,
       formData.end_date,
     );
-    if (days_requested <= 0) {
+    if (days_requested === 0) {
       toast({
         variant: "destructive",
         title: "Tanggal Tidak Valid",
-        description: "Tanggal selesai harus setelah tanggal mulai.",
+        description: "Tanggal yang dipilih bukan hari kerja (weekend atau libur nasional).",
       });
       setIsSubmitting(false);
       return;

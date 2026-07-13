@@ -318,8 +318,8 @@ const EmployeeLeaveRequestForm = ({ onSubmit, onCancel, initialData = null }) =>
       toast({ variant: "destructive", title: "Data Tidak Lengkap", description: "Jenis cuti, tanggal mulai, dan tanggal selesai wajib diisi." });
       return;
     }
-    if (daysRequested <= 0) {
-      toast({ variant: "destructive", title: "Tanggal Tidak Valid", description: "Tanggal selesai harus setelah tanggal mulai." });
+    if (daysRequested === 0) {
+      toast({ variant: "destructive", title: "Tanggal Tidak Valid", description: "Tanggal yang dipilih bukan hari kerja (weekend atau libur nasional)." });
       return;
     }
     if (overlapWarning) {
