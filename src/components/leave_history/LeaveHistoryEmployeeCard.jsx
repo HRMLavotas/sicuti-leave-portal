@@ -217,19 +217,20 @@ const LeaveHistoryEmployeeCard = ({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {/* Penangguhan Action Button */}
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onAddDeferredLeave(employee, employee.deferralLog)}
-            className={`border-yellow-600/50 ${employee.deferralLog
-              ? "text-yellow-400 bg-yellow-900/10 hover:bg-yellow-900/20"
-              : "text-yellow-500 hover:text-white hover:bg-yellow-700/50"
-              }`}
-          >
-            <PlusCircle className="w-4 h-4 mr-1.5" />
-            {employee.deferralLog ? "Edit Penangguhan" : "Input Penangguhan"}
-          </Button>
+          {onAddDeferredLeave && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onAddDeferredLeave(employee, employee.deferralLog)}
+              className={`border-yellow-600/50 ${employee.deferralLog
+                ? "text-yellow-400 bg-yellow-900/10 hover:bg-yellow-900/20"
+                : "text-yellow-500 hover:text-white hover:bg-yellow-700/50"
+                }`}
+            >
+              <PlusCircle className="w-4 h-4 mr-1.5" />
+              {employee.deferralLog ? "Edit Penangguhan" : "Input Penangguhan"}
+            </Button>
+          )}
 
           {/* View History Button - Always shown */}
           <Button

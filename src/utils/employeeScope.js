@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabaseClient";
 import { supabaseSimpelAdmin } from "@/lib/supabaseSSO";
-import { canEdit as roleCanEdit, isReadOnly as roleIsReadOnly } from "@/lib/roles";
+import { canEdit as roleCanEdit } from "@/lib/roles";
 
 /** UUID sentinel — query yang harus mengembalikan nol baris */
 export const NO_EMPLOYEE_MATCH_ID = "00000000-0000-0000-0000-000000000000";
@@ -59,7 +59,8 @@ export function canEditLeaveData(user) {
 }
 
 export function isLeaveDataReadOnly(user) {
-  return roleIsReadOnly(user?.role);
+  const role = typeof user === "string" ? user : user?.role;
+  return !roleCanEdit(role);
 }
 
 /**

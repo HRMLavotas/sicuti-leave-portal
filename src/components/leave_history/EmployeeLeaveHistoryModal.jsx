@@ -86,6 +86,7 @@ const EmployeeLeaveHistoryModal = ({
   }, [isOpen, employee?.id, fetchHistory]);
 
   const handleAction = (action, recordId) => {
+    if (readOnly) return;
     if (action === 'Edit') {
       const record = history.find((h) => h.id === recordId);
       if (record) {
@@ -101,6 +102,7 @@ const EmployeeLeaveHistoryModal = ({
   };
 
   const handleDelete = async (recordId) => {
+    if (readOnly) return;
     if (
       !window.confirm(
         "Apakah Anda yakin ingin menghapus data cuti ini? Saldo cuti akan disesuaikan.",

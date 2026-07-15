@@ -852,7 +852,7 @@ const LeaveHistoryPage = () => {
   }, [leaveTypes]);
 
   const isEmployee = profile?.role === 'employee';
-  const isReadOnly = isLeaveDataReadOnly(profile?.role);
+  const isReadOnly = isLeaveDataReadOnly(profile);
 
   return (
     <>
