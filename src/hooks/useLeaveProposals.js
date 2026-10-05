@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ui/use-toast";
 import { AuthManager } from "@/lib/auth";
@@ -101,15 +101,21 @@ export const useLeaveProposals = (initialOptions = {}) => {
   const [proposals, setProposals] = useState([]);
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [currentPage, setCurrentPage] = useState(initialOptions.page || 1);
+  const [currentPage, setCurrentPage] = useState(initialOptions?.page || 1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const optionsKey = JSON.stringify(initialOptions || {});
+  const optionsRef = useRef(initialOptions);
+  useEffect(() => {
+    optionsRef.current = initialOptions;
+  }, [optionsKey]);
 
   const fetchProposals = useCallback(async (overrideOptions = {}) => {
     setIsLoading(true);
     setError(null);
 
-    const merged = { ...initialOptions, ...overrideOptions };
+    const merged = { ...optionsRef.current, ...overrideOptions };
     const {
       page = 1,
       pageSize = 10,
@@ -248,7 +254,7 @@ export const useLeaveProposals = (initialOptions = {}) => {
     } finally {
       setIsLoading(false);
     }
-  }, [toast, initialOptions]);
+  }, [toast, optionsKey]);
 
   const createProposal = useCallback(async (proposalData) => {
     try {

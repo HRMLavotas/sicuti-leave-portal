@@ -58,6 +58,17 @@ function StatusBadge({ status }) {
 }
 
 // Convert number to Indonesian words
+const safeFormatDate = (dateVal, pattern = "dd MMM yyyy", fallback = "-") => {
+  if (!dateVal) return fallback;
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return fallback;
+    return format(d, pattern, { locale: id });
+  } catch {
+    return fallback;
+  }
+};
+
 const numberToWords = (num) => {
   if (num === 0) return "nol";
 
@@ -891,7 +902,7 @@ const LeaveProposals = () => {
 
   // Filter proposals based on active tab and subfilters
   const displayProposals = proposals.filter((p) => {
-    const isOwn = p.proposed_by === currentUser?.id || (currentUser?.employee_id && p.proposed_by === currentUser.employee_id);
+    const isOwn = String(p.proposed_by) === String(currentUser?.id) || (currentUser?.employee_id && String(p.proposed_by) === String(currentUser.employee_id));
     if (isEmployee) return isOwn;
     if (activeTab === "my-proposals") return isOwn;
     if (activeTab === "create-letters") {
@@ -903,7 +914,10 @@ const LeaveProposals = () => {
       return canGenerateLetter(p.status) || p.status === "completed";
     }
     // employee-approvals: proposals from employees in this unit (not created by admin themselves)
-    return !isOwn && p.proposer_unit === currentUser?.department;
+    const userDept = (currentUser?.department || "").trim().toLowerCase();
+    const propUnit = (p.proposer_unit || "").trim().toLowerCase();
+    const isSameUnit = propUnit && userDept ? propUnit === userDept : (!userDept || p.proposer_unit === currentUser?.department);
+    return !isOwn && isSameUnit;
   });
 
   // Filter with debounced search term and status filter
@@ -961,19 +975,30 @@ const LeaveProposals = () => {
   );
 
   const pendingEmployeeCount = proposals.filter(p => {
-    const isOwn = p.proposed_by === currentUser?.id || (currentUser?.employee_id && p.proposed_by === currentUser.employee_id);
-    return !isOwn && p.proposer_unit === currentUser?.department && p.status === 'pending';
+    const isOwn = String(p.proposed_by) === String(currentUser?.id) || (currentUser?.employee_id && String(p.proposed_by) === String(currentUser.employee_id));
+    const userDept = (currentUser?.department || "").trim().toLowerCase();
+    const propUnit = (p.proposer_unit || "").trim().toLowerCase();
+    const isSameUnit = propUnit && userDept ? propUnit === userDept : (!userDept || p.proposer_unit === currentUser?.department);
+    return !isOwn && isSameUnit && p.status === 'pending';
   }).length;
 
   const readyForLettersCount = proposals.filter(p => p.status === 'awaiting_letter' || p.status === 'approved').length;
   const completedLettersCount = proposals.filter(p => p.status === 'letter_issued' || p.status === 'completed' || p.status === 'processed').length;
 
   const groupedLetterProposals = paginatedProposals.reduce((groups, proposal) => {
-    const sourceDate = proposal.approved_date || proposal.proposal_date || proposal.created_at;
-    const dateKey = format(new Date(sourceDate), "yyyy-MM-dd");
+    const rawDate = proposal.approved_date || proposal.proposal_date || proposal.created_at;
+    let dateKey = "tanpa-tanggal";
+    let validDate = new Date();
+    if (rawDate) {
+      const parsed = new Date(rawDate);
+      if (!isNaN(parsed.getTime())) {
+        validDate = parsed;
+        dateKey = format(parsed, "yyyy-MM-dd");
+      }
+    }
     if (!groups[dateKey]) {
       groups[dateKey] = {
-        date: sourceDate,
+        date: validDate,
         proposals: [],
       };
     }
@@ -1073,7 +1098,11 @@ const LeaveProposals = () => {
           ].map(tab => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+                setProposalPage(1);
+                setLetterItemsPage(1);
+              }}
               className={`pb-3 font-semibold text-sm transition-all relative flex items-center gap-2 ${activeTab === tab.key ? "text-blue-400" : "text-slate-400 hover:text-white"}`}
             >
               {tab.label}
@@ -1247,9 +1276,9 @@ const LeaveProposals = () => {
                                   </Badge>
                                 </div>
                                 <p className="mt-1 text-xs text-slate-400">
-                                  {format(new Date(item.start_date), "dd MMM yyyy", { locale: id })} - {format(new Date(item.end_date), "dd MMM yyyy", { locale: id })}
+                                  {safeFormatDate(item.start_date, "dd MMM yyyy")} - {safeFormatDate(item.end_date, "dd MMM yyyy")}
                                   {" "}• {item.days_requested || 0} hari
-                                  {" "}• Pengajuan: {format(new Date(item.approved_date || item.proposal_date || item.created_at), "dd MMM yyyy", { locale: id })}
+                                  {" "}• Pengajuan: {safeFormatDate(item.approved_date || item.proposal_date || item.created_at, "dd MMM yyyy")}
                                 </p>
                               </div>
                             </label>
@@ -1294,7 +1323,7 @@ const LeaveProposals = () => {
                       <div className="flex flex-col gap-2 rounded-lg border border-slate-600/50 bg-slate-700/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <h3 className="text-white font-semibold">
-                            {format(new Date(group.date), "dd MMMM yyyy", { locale: id })}
+                            {safeFormatDate(group.date, "dd MMMM yyyy")}
                           </h3>
                           <p className="text-sm text-slate-400">
                             {group.proposals.length} pengajuan siap dibuatkan surat
@@ -1862,7 +1891,7 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
             </button>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-400 mb-2">
-            <span>📅 {format(new Date(proposal.proposal_date || proposal.created_at), "dd MMM yyyy", { locale: id })}</span>
+            <span>📅 {safeFormatDate(proposal.proposal_date || proposal.created_at, "dd MMM yyyy")}</span>
             <span>👥 {proposal.total_employees} pegawai</span>
             {isEmployeeApprovalTab && (
               <span className="flex items-center text-blue-400">
@@ -1882,14 +1911,14 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
           {proposal.status === 'completed' && (
             <div className="p-2 bg-emerald-950/30 border border-emerald-700/40 rounded text-sm text-emerald-300">
               <strong>Usulan Selesai:</strong> {proposal.letter_number ? `No. Surat: ${proposal.letter_number}` : 'Surat cuti telah diproses'}
-              {proposal.letter_date && ` — ${format(new Date(proposal.letter_date), "dd MMMM yyyy", { locale: id })}`}
-              {proposal.completed_at && ` (Diselesaikan ${format(new Date(proposal.completed_at), "dd MMM yyyy", { locale: id })})`}
+              {proposal.letter_date && ` — ${safeFormatDate(proposal.letter_date, "dd MMMM yyyy")}`}
+              {proposal.completed_at && ` (Diselesaikan ${safeFormatDate(proposal.completed_at, "dd MMM yyyy")})`}
             </div>
           )}
           {(proposal.status === 'awaiting_letter' || proposal.status === 'approved' || proposal.status === 'letter_issued') && proposal.letter_number && (
             <div className="p-2 bg-green-950/30 border border-green-700/40 rounded text-sm text-green-400">
               <strong>Nomor Surat:</strong> {proposal.letter_number}
-              {proposal.letter_date && ` — ${format(new Date(proposal.letter_date), "dd MMMM yyyy", { locale: id })}`}
+              {proposal.letter_date && ` — ${safeFormatDate(proposal.letter_date, "dd MMMM yyyy")}`}
             </div>
           )}
           {proposal.status === 'forwarded' && (
@@ -1977,7 +2006,7 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
                 </div>
                 <div className="text-right mt-1 sm:mt-0">
                   <span className="text-slate-300 text-xs">
-                    {format(new Date(item.start_date), "dd MMM", { locale: id })} – {format(new Date(item.end_date), "dd MMM yyyy", { locale: id })}
+                    {safeFormatDate(item.start_date, "dd MMM")} – {safeFormatDate(item.end_date, "dd MMM yyyy")}
                   </span>
                   <p className="text-xs text-slate-400">{item.days_requested} hari kerja</p>
                 </div>
