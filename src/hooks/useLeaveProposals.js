@@ -96,25 +96,38 @@ const finalizeApprovedProposalItems = async ({
   }
 };
 
-export const useLeaveProposals = () => {
+export const useLeaveProposals = (initialOptions = {}) => {
   const { toast } = useToast();
   const [proposals, setProposals] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialOptions.page || 1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const fetchProposals = useCallback(async () => {
+  const fetchProposals = useCallback(async (overrideOptions = {}) => {
     setIsLoading(true);
     setError(null);
+
+    const merged = { ...initialOptions, ...overrideOptions };
+    const {
+      page = 1,
+      pageSize = 10,
+      searchTerm = "",
+      statusFilter = "all",
+      tab = "",
+      paginate = false, // Default false for backwards compatibility with legacy callers
+    } = merged;
 
     try {
       const currentUser = AuthManager.getUserSession();
       if (!currentUser) {
-        throw new Error("User not authenticated");
+        throw new Error("User tidak terotentikasi");
       }
 
       let query = supabase
         .from("leave_proposals")
-        .select("*")
+        .select("*", { count: "exact" })
         .order("created_at", { ascending: false });
 
       // Apply filtering based on role
@@ -125,7 +138,6 @@ export const useLeaveProposals = () => {
         // Employee can see:
         // 1. Proposals they created (proposed_by)
         // 2. Proposals that include them as an employee (leave_proposal_items.employee_id)
-        // First, fetch all proposal items that include the employee
         const possibleEmployeeIds = await getPossibleEmployeeIdsForCurrentUser(currentUser);
         let itemsQuery = supabase
           .from("leave_proposal_items")
@@ -139,7 +151,6 @@ export const useLeaveProposals = () => {
         }
 
         const { data: employeeItems, error: itemsError } = await itemsQuery;
-
         if (itemsError) throw itemsError;
 
         const employeeProposalIds = employeeItems?.map(item => item.proposal_id) || [];
@@ -162,20 +173,42 @@ export const useLeaveProposals = () => {
           query = query.eq("id", "00000000-0000-0000-0000-000000000000");
         }
       }
-      // Master admin can see all proposals (no additional filter needed)
 
-      const { data, error } = await query;
+      // Status filtering if provided
+      if (statusFilter && statusFilter !== 'all') {
+        if (statusFilter === 'letter_pending') {
+          query = query.in("status", ["awaiting_letter", "approved"]);
+        } else if (statusFilter === 'letter_completed') {
+          query = query.in("status", ["letter_issued", "completed", "processed"]);
+        } else {
+          query = query.eq("status", statusFilter);
+        }
+      }
 
+      // Search term filtering on server if provided
+      if (searchTerm && searchTerm.trim() !== '') {
+        const s = searchTerm.trim();
+        query = query.or(`proposal_title.ilike.%${s}%,proposer_name.ilike.%${s}%,letter_number.ilike.%${s}%`);
+      }
+
+      // Apply range pagination if enabled
+      if (paginate) {
+        const from = (page - 1) * pageSize;
+        const to = from + pageSize - 1;
+        query = query.range(from, to);
+      }
+
+      const { data, count, error } = await query;
       if (error) throw error;
 
-      // Get proposal items separately if proposals exist
+      // Optimasi Big Data: HANYA query items untuk proposals pada halaman aktif
       let proposalsWithItems = data || [];
       if (proposalsWithItems.length > 0) {
         const proposalIds = proposalsWithItems.map(p => p.id);
 
         const { data: proposalItems, error: itemsError } = await supabase
           .from("leave_proposal_items")
-          .select("*, leave_documents (id, external_link, drive_view_url)")
+          .select("*")
           .in("proposal_id", proposalIds);
 
         if (!itemsError && proposalItems) {
@@ -196,8 +229,11 @@ export const useLeaveProposals = () => {
         }
       }
 
-      console.log("Fetched proposals:", proposalsWithItems);
       setProposals(proposalsWithItems);
+      const total = count ?? proposalsWithItems.length;
+      setTotalCount(total);
+      setTotalPages(Math.max(1, Math.ceil(total / (pageSize || 10))));
+      setCurrentPage(page);
 
     } catch (err) {
       console.error("Error fetching proposals:", err);
@@ -212,7 +248,7 @@ export const useLeaveProposals = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, initialOptions]);
 
   const createProposal = useCallback(async (proposalData) => {
     try {
@@ -519,6 +555,99 @@ export const useLeaveProposals = () => {
     fetchProposals();
   }, [fetchProposals]);
 
+  /**
+   * Tandai usulan cuti sebagai selesai (surat sudah dibuat / dicetak).
+   * Status usulan menjadi 'completed', data surat disinkronkan ke leave_proposals dan leave_requests.
+   */
+  const markProposalCompleted = useCallback(async (proposalId, completionData = {}) => {
+    try {
+      const currentUser = AuthManager.getUserSession();
+      if (!currentUser) throw new Error("User tidak terotentikasi");
+      if (currentUser.role !== 'admin_unit' && currentUser.role !== 'admin_pusat') {
+        throw new Error("Hanya admin yang dapat menandai usulan selesai");
+      }
+
+      // 1. Ambil data usulan dan items terkait
+      const { data: proposal, error: fetchErr } = await supabase
+        .from("leave_proposals")
+        .select("*, leave_proposal_items(*)")
+        .eq("id", proposalId)
+        .maybeSingle();
+
+      if (fetchErr) throw fetchErr;
+      if (!proposal) throw new Error("Pengajuan cuti tidak ditemukan.");
+
+      const letterNumber = completionData.letter_number ?? proposal.letter_number ?? "";
+      const letterDate = completionData.letter_date ?? proposal.letter_date ?? new Date().toISOString().split('T')[0];
+      const signedBy = completionData.signed_by ?? proposal.signed_by ?? "";
+      const items = proposal.leave_proposal_items || [];
+
+      // 2. Pastikan item masuk ke leave_requests dan saldo terpotong jika belum
+      const shouldDeductBalance = !["approved", "awaiting_letter", "letter_issued", "processed", "completed"].includes(proposal.status);
+      await finalizeApprovedProposalItems({
+        proposalId,
+        items,
+        approvalData: {
+          letter_number: letterNumber,
+          letter_date: letterDate,
+          signed_by: signedBy,
+        },
+        shouldDeductBalance,
+      });
+
+      // 3. Update status leave_proposals ke 'completed'
+      const updatePayload = {
+        status: "completed",
+        letter_number: letterNumber,
+        letter_date: letterDate,
+        signed_by: signedBy,
+        completed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error: updateErr } = await supabase
+        .from("leave_proposals")
+        .update(updatePayload)
+        .eq("id", proposalId);
+
+      if (updateErr) throw updateErr;
+
+      // 4. Update status leave_proposal_items ke 'approved'
+      await supabase
+        .from("leave_proposal_items")
+        .update({ status: "approved" })
+        .eq("proposal_id", proposalId);
+
+      // 5. Update data surat di leave_requests agar sinkron penuh dengan riwayat cuti
+      if (items.length > 0) {
+        await supabase
+          .from("leave_requests")
+          .update({
+            leave_letter_number: letterNumber,
+            leave_letter_date: letterDate,
+            signed_by: signedBy,
+          })
+          .eq("proposal_id", proposalId);
+      }
+
+      toast({
+        title: "Usulan Selesai",
+        description: "Usulan cuti berhasil ditandai selesai dan data termuat lengkap di riwayat cuti.",
+      });
+
+      await fetchProposals();
+      return true;
+    } catch (err) {
+      console.error("Error marking proposal completed:", err);
+      toast({
+        title: "Gagal Menandai Selesai",
+        description: err.message || "Terjadi kesalahan",
+        variant: "destructive",
+      });
+      throw err;
+    }
+  }, [toast, fetchProposals]);
+
   const deleteProposal = useCallback(async (proposalId) => {
     try {
       const currentUser = AuthManager.getUserSession();
@@ -535,7 +664,7 @@ export const useLeaveProposals = () => {
       if (proposalFetchError) throw proposalFetchError;
       if (!proposal) throw new Error("Pengajuan cuti tidak ditemukan.");
 
-      const adminUnitAllowedStatuses = ["pending", "rejected", "processed"];
+      const adminUnitAllowedStatuses = ["pending", "rejected", "processed", "completed", "letter_issued", "awaiting_letter"];
       const possibleEmployeeIds = currentUser.role === "employee"
         ? await getPossibleEmployeeIdsForCurrentUser(currentUser)
         : [];
@@ -632,8 +761,8 @@ export const useLeaveProposals = () => {
         leave_period: emp.leave_period || emp.leave_quota_year,
         reason: emp.reason || "",
         address_during_leave: emp.address_during_leave || "",
-          application_form_date: emp.application_form_date || null,
-          status: "proposed",
+        application_form_date: emp.application_form_date || null,
+        status: "proposed",
       }));
 
       const { error: itemsError } = await supabase.from("leave_proposal_items").insert(proposalItems);
@@ -658,6 +787,9 @@ export const useLeaveProposals = () => {
 
   return {
     proposals,
+    totalCount,
+    totalPages,
+    currentPage,
     isLoading,
     error,
     fetchProposals,
@@ -666,6 +798,7 @@ export const useLeaveProposals = () => {
     approveEmployeeProposal,
     rejectEmployeeProposal,
     forwardToAdminPusat,
+    markProposalCompleted,
     deleteProposal,
     updateProposal,
   };

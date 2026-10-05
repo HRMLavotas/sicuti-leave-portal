@@ -16,6 +16,21 @@ const LeaveRequestCard = ({ request, index, onEdit, onDelete }) => {
       className: "bg-green-500/20 text-green-300 border-green-500/40",
       icon: CheckCircle,
     },
+    awaiting_letter: {
+      label: "Menunggu Pembuatan Surat",
+      className: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+      icon: Clock,
+    },
+    letter_issued: {
+      label: "Surat Diterbitkan",
+      className: "bg-teal-500/20 text-teal-300 border-teal-500/40",
+      icon: CheckCircle,
+    },
+    completed: {
+      label: "Selesai (Surat Diterbitkan)",
+      className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+      icon: CheckCircle,
+    },
     rejected: {
       label: "Ditolak",
       className: "bg-red-500/20 text-red-300 border-red-500/40",
@@ -38,7 +53,10 @@ const LeaveRequestCard = ({ request, index, onEdit, onDelete }) => {
     return new Date(dateString).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
   };
 
-  const status = request.approval_status || request.status || "approved";
+  let status = request.approval_status || request.status || "approved";
+  if ((status === "approved" || status === "processed") && request.leave_letter_number) {
+    status = "completed";
+  }
   const badge = statusConfig[status] || statusConfig.approved;
   const StatusIcon = badge.icon;
 

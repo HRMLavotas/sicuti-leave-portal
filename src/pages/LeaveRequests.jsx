@@ -192,12 +192,12 @@ const LeaveRequests = () => {
         const proposalRows = (proposals || [])
           .filter((proposal) => {
             if (
-              ["approved", "processed"].includes(proposal.status) &&
+              ["approved", "processed", "awaiting_letter", "letter_issued", "completed"].includes(proposal.status) &&
               approvedProposalIds.has(proposal.id)
             ) {
               return false;
             }
-            return ["pending", "approved", "rejected", "forwarded", "processed"].includes(proposal.status);
+            return ["pending", "approved", "rejected", "forwarded", "processed", "awaiting_letter", "letter_issued", "completed"].includes(proposal.status);
           })
           .flatMap((proposal) =>
             (proposal.leave_proposal_items || []).map((item) => ({
@@ -224,7 +224,7 @@ const LeaveRequests = () => {
               submitted_date: proposal.proposal_date || proposal.created_at,
               leave_letter_number: proposal.letter_number || "",
               leave_letter_date: proposal.letter_date || null,
-              signed_by: "",
+              signed_by: proposal.signed_by || "",
               document_link: item.leave_documents?.[0]?.external_link || item.leave_documents?.[0]?.drive_view_url || null,
             })),
           );

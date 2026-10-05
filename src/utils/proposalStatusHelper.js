@@ -100,6 +100,20 @@ export const isLetterIssued = (status) => {
 };
 
 /**
+ * Check if proposal is fully completed
+ */
+export const isCompleted = (status) => {
+  return status === PROPOSAL_STATUS.COMPLETED;
+};
+
+/**
+ * Check if proposal is awaiting letter generation
+ */
+export const isAwaitingLetter = (status) => {
+  return status === PROPOSAL_STATUS.AWAITING_LETTER || status === PROPOSAL_STATUS.APPROVED;
+};
+
+/**
  * Get next status after approval
  */
 export const getNextStatusAfterApproval = () => {
@@ -112,3 +126,4 @@ export const getNextStatusAfterApproval = () => {
 export const getNextStatusAfterLetterGeneration = () => {
   return PROPOSAL_STATUS.LETTER_ISSUED;
 };
+

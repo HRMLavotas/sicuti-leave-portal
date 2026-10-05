@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   History,
@@ -88,6 +88,7 @@ const LeaveHistoryPage = () => {
   // Default to current year dynamically
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear().toString());
   const [selectedUnitPenempatan, setSelectedUnitPenempatan] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [employeesWithBalances, setEmployeesWithBalances] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [totalEmployeesInFilter, setTotalEmployeesInFilter] = useState(0);
@@ -162,7 +163,7 @@ const LeaveHistoryPage = () => {
   );
 
   const fetchLeaveData = useCallback(
-    async (isInitialLoad = false) => {
+    async (isInitialLoad = false, page = currentPage) => {
       if (leaveTypes.length === 0 && !isLoadingLeaveTypes) {
         toast({
           variant: "destructive",
@@ -202,8 +203,10 @@ const LeaveHistoryPage = () => {
           );
         }
 
-        // Add pagination
-        query = query.range(0, LEAVE_HISTORY_PER_PAGE - 1);
+        // Add server-side pagination
+        const from = (page - 1) * LEAVE_HISTORY_PER_PAGE;
+        const to = from + LEAVE_HISTORY_PER_PAGE - 1;
+        query = query.range(from, to);
 
         // Execute the query
         const { data: employeesData, error: employeesError, count } = await query;
@@ -588,19 +591,24 @@ const LeaveHistoryPage = () => {
   useEffect(() => {
     const timerId = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
-    }, 500);
+    }, 400);
     return () => clearTimeout(timerId);
   }, [searchTerm]);
 
-  // Consolidated effect: fetch data when filters or year changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedYear, debouncedSearchTerm, selectedUnitPenempatan]);
+
+  // Consolidated effect: fetch data when filters, year, or page changes
   // On initial load: isInitialLoad=true, on filter changes: isInitialLoad=false
   useEffect(() => {
     if (!isLoadingLeaveTypes && leaveTypes.length > 0) {
       const isYearChange = true; // Year changes should refetch counts
-      fetchLeaveData(isYearChange);
+      fetchLeaveData(isYearChange, currentPage);
       setHasInitialLoad(true);
     }
   }, [
+    currentPage,
     selectedYear,
     debouncedSearchTerm,
     selectedUnitPenempatan,
@@ -609,11 +617,11 @@ const LeaveHistoryPage = () => {
     fetchLeaveData,
   ]);
 
-
   const handleRefresh = () => {
     setSearchTerm("");
     setSelectedUnitPenempatan("");
-    setSelectedYear("2025");
+    setSelectedYear(new Date().getFullYear().toString());
+    setCurrentPage(1);
   };
 
   const handleFeatureClick = (feature) => {
@@ -853,6 +861,7 @@ const LeaveHistoryPage = () => {
 
   const isEmployee = profile?.role === 'employee';
   const isReadOnly = isLeaveDataReadOnly(profile);
+  const totalPages = Math.max(1, Math.ceil(totalEmployeesInFilter / LEAVE_HISTORY_PER_PAGE));
 
   return (
     <>
@@ -963,6 +972,38 @@ const LeaveHistoryPage = () => {
                       onViewHistory={handleViewHistory}
                     />
                   ))}
+
+                  {/* Pagination Controls */}
+                  {totalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-700/60 mt-6">
+                      <p className="text-xs text-slate-400">
+                        Menampilkan <span className="text-white font-medium">{(currentPage - 1) * LEAVE_HISTORY_PER_PAGE + 1}</span> - <span className="text-white font-medium">{Math.min(currentPage * LEAVE_HISTORY_PER_PAGE, totalEmployeesInFilter)}</span> dari <span className="text-white font-medium">{totalEmployeesInFilter}</span> pegawai
+                      </p>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          disabled={currentPage <= 1 || isLoadingData}
+                          className="border-slate-700 bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40"
+                        >
+                          Sebelumnya
+                        </Button>
+                        <span className="text-xs text-slate-300 px-2 font-mono">
+                          {currentPage} / {totalPages}
+                        </span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={currentPage >= totalPages || isLoadingData}
+                          className="border-slate-700 bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-40"
+                        >
+                          Selanjutnya
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8">

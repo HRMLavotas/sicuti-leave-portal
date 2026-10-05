@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import {
   FileText, Plus, CheckCircle, XCircle, Clock, User,
   Check, Forward, Printer, ChevronDown, Edit, Trash2,
-  Eye, Download, Layers, Building2
+  Eye, Download, Layers, Building2, Search
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ const STATUS_CONFIG = {
   approved:  { label: "Disetujui (Legacy)",    color: "bg-green-500/20 text-green-300 border-green-500/30",   icon: CheckCircle },
   awaiting_letter: { label: "Disetujui & Menunggu Surat", color: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30", icon: FileText },
   letter_issued: { label: "Surat Sudah Diterbitkan", color: "bg-purple-500/20 text-purple-300 border-purple-500/30", icon: CheckCircle },
+  completed: { label: "Selesai", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", icon: CheckCircle },
   rejected:  { label: "Ditolak",      color: "bg-red-500/20 text-red-300 border-red-500/30",         icon: XCircle },
   forwarded: { label: "Diteruskan ke Admin Pusat", color: "bg-blue-500/20 text-blue-300 border-blue-500/30", icon: Forward },
   processed: { label: "Surat Sudah Diterbitkan (Legacy)",     color: "bg-purple-500/20 text-purple-300 border-purple-500/30",   icon: FileText },
@@ -118,6 +119,7 @@ const LeaveProposals = () => {
     proposals, isLoading, fetchProposals,
     createProposal,
     approveEmployeeProposal, rejectEmployeeProposal, forwardToAdminPusat,
+    markProposalCompleted,
     deleteProposal, updateProposal,
   } = useLeaveProposals();
 
@@ -128,6 +130,23 @@ const LeaveProposals = () => {
   const [editingProposal, setEditingProposal] = useState(null);
   const [tableExists, setTableExists] = useState(true);
   const [activeTab, setActiveTab] = useState("my-proposals");
+
+  // Search & Filter & Pagination state for main proposal lists
+  const [proposalSearchTerm, setProposalSearchTerm] = useState("");
+  const [debouncedProposalSearchTerm, setDebouncedProposalSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [createLetterSubFilter, setCreateLetterSubFilter] = useState("pending_letter"); // 'pending_letter' | 'completed_letter' | 'all'
+  const [proposalPage, setProposalPage] = useState(1);
+  const PROPOSALS_PER_PAGE = 10;
+
+  // Complete Dialog state
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [targetProposalForComplete, setTargetProposalForComplete] = useState(null);
+  const [completeDetails, setCompleteDetails] = useState({
+    letter_number: "",
+    letter_date: format(new Date(), "yyyy-MM-dd"),
+    signed_by: "",
+  });
 
   // Dialog state
   const [showApprovalDialog, setShowApprovalDialog] = useState(false);
@@ -180,6 +199,14 @@ const LeaveProposals = () => {
         setTableExists(!(error && error.code === "42P01"));
       });
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedProposalSearchTerm(proposalSearchTerm);
+      setProposalPage(1);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [proposalSearchTerm]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -320,8 +347,49 @@ const LeaveProposals = () => {
           email: "",
         },
       });
+
+      // Jika usulan masih awaiting_letter atau approved, perbarui status menjadi letter_issued
+      if (proposal.status === "awaiting_letter" || proposal.status === "approved") {
+        await supabase
+          .from("leave_proposals")
+          .update({
+            status: "letter_issued",
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", proposal.id);
+        await fetchProposals();
+        toast({
+          title: "Surat Berhasil Dicetak",
+          description: "Usulan telah ditandai dengan status Surat Diterbitkan.",
+        });
+      }
     } catch (err) {
       toast({ variant: "destructive", title: "Gagal Generate Surat", description: err.message });
+    }
+  };
+
+  const handleOpenCompleteDialog = (proposal) => {
+    setTargetProposalForComplete(proposal);
+    setCompleteDetails({
+      letter_number: proposal.letter_number || "",
+      letter_date: proposal.letter_date || format(new Date(), "yyyy-MM-dd"),
+      signed_by: proposal.signed_by || "",
+    });
+    setShowCompleteDialog(true);
+  };
+
+  const handleConfirmComplete = async () => {
+    if (!targetProposalForComplete) return;
+    setSubmitting(true);
+    try {
+      await markProposalCompleted(targetProposalForComplete.id, completeDetails);
+      setShowCompleteDialog(false);
+      setTargetProposalForComplete(null);
+    } catch (e) {
+      console.error("Gagal menyelesaikan usulan:", e);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -471,6 +539,10 @@ const LeaveProposals = () => {
         .update({
           letter_number: details.letter_number,
           letter_date: details.letter_date,
+          signed_by: details.signed_by,
+          status: "letter_issued",
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
         .in("id", proposalIds);
       if (proposalUpdateErr) throw proposalUpdateErr;
@@ -817,14 +889,47 @@ const LeaveProposals = () => {
     return String(error);
   };
 
-  // Filter proposals for display
+  // Filter proposals based on active tab and subfilters
   const displayProposals = proposals.filter((p) => {
-    if (isEmployee) return p.proposed_by === currentUser.id;
-    if (activeTab === "my-proposals") return p.proposed_by === currentUser.id;
-    if (activeTab === "create-letters") return canGenerateLetter(p.status);
+    const isOwn = p.proposed_by === currentUser?.id || (currentUser?.employee_id && p.proposed_by === currentUser.employee_id);
+    if (isEmployee) return isOwn;
+    if (activeTab === "my-proposals") return isOwn;
+    if (activeTab === "create-letters") {
+      if (createLetterSubFilter === "pending_letter") {
+        return p.status === "awaiting_letter" || p.status === "approved";
+      } else if (createLetterSubFilter === "completed_letter") {
+        return p.status === "letter_issued" || p.status === "completed" || p.status === "processed";
+      }
+      return canGenerateLetter(p.status) || p.status === "completed";
+    }
     // employee-approvals: proposals from employees in this unit (not created by admin themselves)
-    return p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department;
+    return !isOwn && p.proposer_unit === currentUser?.department;
   });
+
+  // Filter with debounced search term and status filter
+  const filteredProposals = displayProposals.filter((p) => {
+    if (activeTab !== "create-letters" && statusFilter !== "all" && p.status !== statusFilter) {
+      return false;
+    }
+    const term = debouncedProposalSearchTerm.trim().toLowerCase();
+    if (!term) return true;
+    return [
+      p.proposal_title,
+      p.proposer_name,
+      p.letter_number,
+      p.notes,
+      p.status,
+      ...(p.leave_proposal_items || []).flatMap(item => [item.employee_name, item.employee_nip, item.leave_type_name, item.reason])
+    ].some(v => String(v || "").toLowerCase().includes(term));
+  });
+
+  const totalProposalPages = Math.max(1, Math.ceil(filteredProposals.length / PROPOSALS_PER_PAGE));
+  const currentProposalPage = Math.min(proposalPage, totalProposalPages);
+  const paginatedProposals = filteredProposals.slice(
+    (currentProposalPage - 1) * PROPOSALS_PER_PAGE,
+    currentProposalPage * PROPOSALS_PER_PAGE
+  );
+
   const readyLetterItems = displayProposals.flatMap((proposal) =>
     (proposal.leave_proposal_items || []).map((item) => ({
       ...item,
@@ -835,6 +940,7 @@ const LeaveProposals = () => {
       created_at: proposal.created_at,
     }))
   );
+
   const filteredReadyLetterItems = readyLetterItems.filter((item) => {
     const search = debouncedLetterSearchTerm.trim().toLowerCase();
     if (!search) return true;
@@ -846,6 +952,7 @@ const LeaveProposals = () => {
       item.reason,
     ].some((value) => String(value || "").toLowerCase().includes(search));
   });
+
   const totalLetterItemPages = Math.max(1, Math.ceil(filteredReadyLetterItems.length / LETTER_ITEMS_PER_PAGE));
   const currentLetterItemsPage = Math.min(letterItemsPage, totalLetterItemPages);
   const paginatedReadyLetterItems = filteredReadyLetterItems.slice(
@@ -853,11 +960,15 @@ const LeaveProposals = () => {
     currentLetterItemsPage * LETTER_ITEMS_PER_PAGE
   );
 
-  const pendingEmployeeCount = proposals.filter(
-    p => p.proposed_by !== currentUser.id && p.proposer_unit === currentUser.department && p.status === 'pending'
-  ).length;
-  const readyForLettersCount = proposals.filter(p => canGenerateLetter(p.status)).length;
-  const groupedLetterProposals = displayProposals.reduce((groups, proposal) => {
+  const pendingEmployeeCount = proposals.filter(p => {
+    const isOwn = p.proposed_by === currentUser?.id || (currentUser?.employee_id && p.proposed_by === currentUser.employee_id);
+    return !isOwn && p.proposer_unit === currentUser?.department && p.status === 'pending';
+  }).length;
+
+  const readyForLettersCount = proposals.filter(p => p.status === 'awaiting_letter' || p.status === 'approved').length;
+  const completedLettersCount = proposals.filter(p => p.status === 'letter_issued' || p.status === 'completed' || p.status === 'processed').length;
+
+  const groupedLetterProposals = paginatedProposals.reduce((groups, proposal) => {
     const sourceDate = proposal.approved_date || proposal.proposal_date || proposal.created_at;
     const dateKey = format(new Date(sourceDate), "yyyy-MM-dd");
     if (!groups[dateKey]) {
@@ -869,6 +980,7 @@ const LeaveProposals = () => {
     groups[dateKey].proposals.push(proposal);
     return groups;
   }, {});
+
   const letterProposalGroups = Object.entries(groupedLetterProposals)
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([dateKey, group]) => ({ dateKey, ...group }));
@@ -986,6 +1098,61 @@ const LeaveProposals = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Search and Filters Bar */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={proposalSearchTerm}
+                  onChange={(e) => setProposalSearchTerm(e.target.value)}
+                  placeholder="Cari judul, nama pegawai, NIP, no. surat, atau alasan..."
+                  className="pl-9 bg-slate-700/50 border-slate-600/50 text-white placeholder:text-slate-400"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                {activeTab !== "create-letters" ? (
+                  <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setProposalPage(1); }}>
+                    <SelectTrigger className="w-[180px] bg-slate-700/50 border-slate-600/50 text-white">
+                      <SelectValue placeholder="Semua Status" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700 text-white">
+                      <SelectItem value="all">Semua Status</SelectItem>
+                      <SelectItem value="pending">Menunggu</SelectItem>
+                      <SelectItem value="awaiting_letter">Menunggu Surat</SelectItem>
+                      <SelectItem value="letter_issued">Surat Diterbitkan</SelectItem>
+                      <SelectItem value="completed">Selesai</SelectItem>
+                      <SelectItem value="forwarded">Diteruskan</SelectItem>
+                      <SelectItem value="rejected">Ditolak</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="flex bg-slate-900/60 p-1 rounded-lg border border-slate-700/50 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => { setCreateLetterSubFilter("pending_letter"); setProposalPage(1); }}
+                      className={`px-3 py-1.5 rounded-md font-medium transition-all ${createLetterSubFilter === 'pending_letter' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      Menunggu Surat ({readyForLettersCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCreateLetterSubFilter("completed_letter"); setProposalPage(1); }}
+                      className={`px-3 py-1.5 rounded-md font-medium transition-all ${createLetterSubFilter === 'completed_letter' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      Sudah Selesai / Terbit ({completedLettersCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCreateLetterSubFilter("all"); setProposalPage(1); }}
+                      className={`px-3 py-1.5 rounded-md font-medium transition-all ${createLetterSubFilter === 'all' ? 'bg-purple-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      Semua
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {isLoading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto" />
@@ -1001,6 +1168,12 @@ const LeaveProposals = () => {
                     : activeTab === "create-letters" ? "Belum ada pengajuan yang siap dibuatkan surat keterangan."
                     : "Belum ada pegawai yang mengajukan cuti."}
                 </p>
+              </div>
+            ) : filteredProposals.length === 0 ? (
+              <div className="text-center py-8">
+                <Search className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <h3 className="text-base font-medium mb-1">Tidak Ada Data Ditemukan</h3>
+                <p className="text-slate-400 text-sm">Tidak ada usulan cuti yang cocok dengan filter atau kata kunci pencarian.</p>
               </div>
             ) : activeTab === "create-letters" ? (
               <div className="space-y-5">
@@ -1147,6 +1320,7 @@ const LeaveProposals = () => {
                             onForward={openForwardDialog}
                             onPrint={handlePrintApprovedLetter}
                             onCreateLetter={handleOpenBatchDialog}
+                            onMarkComplete={handleOpenCompleteDialog}
                             onEdit={(proposal) => {
                               setEditingProposal(proposal);
                               setShowCreateForm(true);
@@ -1158,10 +1332,42 @@ const LeaveProposals = () => {
                     </div>
                   );
                 })}
+
+                {/* Pagination for create-letters */}
+                {filteredProposals.length > PROPOSALS_PER_PAGE && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-700/50 text-sm text-slate-400">
+                    <span>
+                      Menampilkan {(currentProposalPage - 1) * PROPOSALS_PER_PAGE + 1} - {Math.min(currentProposalPage * PROPOSALS_PER_PAGE, filteredProposals.length)} dari {filteredProposals.length} usulan
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setProposalPage(p => Math.max(1, p - 1))}
+                        disabled={currentProposalPage === 1}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                      >
+                        Sebelumnya
+                      </Button>
+                      <span className="text-slate-300 font-medium px-2">
+                        {currentProposalPage} / {totalProposalPages}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setProposalPage(p => Math.min(totalProposalPages, p + 1))}
+                        disabled={currentProposalPage === totalProposalPages}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                      >
+                        Berikutnya
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="space-y-4">
-                {displayProposals.map((proposal) => (
+                {paginatedProposals.map((proposal) => (
                   <ProposalCard
                     key={proposal.id}
                     proposal={proposal}
@@ -1173,6 +1379,7 @@ const LeaveProposals = () => {
                     onForward={openForwardDialog}
                     onPrint={handlePrintApprovedLetter}
                     onCreateLetter={handleOpenBatchDialog}
+                    onMarkComplete={handleOpenCompleteDialog}
                     onEdit={(proposal) => {
                       setEditingProposal(proposal);
                       setShowCreateForm(true);
@@ -1180,6 +1387,38 @@ const LeaveProposals = () => {
                     onDelete={handleDeleteProposal}
                   />
                 ))}
+
+                {/* Pagination for standard tabs */}
+                {filteredProposals.length > PROPOSALS_PER_PAGE && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-700/50 text-sm text-slate-400">
+                    <span>
+                      Menampilkan {(currentProposalPage - 1) * PROPOSALS_PER_PAGE + 1} - {Math.min(currentProposalPage * PROPOSALS_PER_PAGE, filteredProposals.length)} dari {filteredProposals.length} usulan
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setProposalPage(p => Math.max(1, p - 1))}
+                        disabled={currentProposalPage === 1}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                      >
+                        Sebelumnya
+                      </Button>
+                      <span className="text-slate-300 font-medium px-2">
+                        {currentProposalPage} / {totalProposalPages}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setProposalPage(p => Math.min(totalProposalPages, p + 1))}
+                        disabled={currentProposalPage === totalProposalPages}
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                      >
+                        Berikutnya
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -1320,6 +1559,58 @@ const LeaveProposals = () => {
             <Button onClick={handleForwardSubmit} disabled={submitting} className="bg-blue-600 hover:bg-blue-700">
               <Forward className="w-4 h-4 mr-2" />
               {submitting ? "Meneruskan..." : "Teruskan ke Admin Pusat"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* === Complete Proposal Dialog === */}
+      <Dialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <DialogContent className="bg-slate-800 border-slate-700 text-white">
+          <DialogHeader>
+            <DialogTitle>Tandai Usulan Cuti Selesai</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Usulan yang ditandai selesai memastikan surat cuti telah dibuat/dicetak dan data akan termuat penuh di menu Riwayat Cuti.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-slate-300">Nomor Surat Cuti</Label>
+                <Input
+                  value={completeDetails.letter_number}
+                  onChange={e => setCompleteDetails(prev => ({ ...prev, letter_number: e.target.value }))}
+                  placeholder="Contoh: 800/123/BKD/2026"
+                  className="bg-slate-700/50 border-slate-600/50 mt-1 text-white placeholder:text-slate-500"
+                />
+              </div>
+              <div>
+                <Label className="text-slate-300">Tanggal Surat Cuti</Label>
+                <Input
+                  type="date"
+                  value={completeDetails.letter_date}
+                  onChange={e => setCompleteDetails(prev => ({ ...prev, letter_date: e.target.value }))}
+                  className="bg-slate-700/50 border-slate-600/50 mt-1 text-white"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-slate-300">Pejabat Penandatangan</Label>
+              <Input
+                value={completeDetails.signed_by}
+                onChange={e => setCompleteDetails(prev => ({ ...prev, signed_by: e.target.value }))}
+                placeholder="Nama pejabat penandatangan surat..."
+                className="bg-slate-700/50 border-slate-600/50 mt-1 text-white placeholder:text-slate-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-3 border-t border-slate-700/50">
+            <Button variant="outline" onClick={() => setShowCompleteDialog(false)} className="bg-slate-700 border-slate-600 text-white hover:bg-slate-600">
+              Batal
+            </Button>
+            <Button onClick={handleConfirmComplete} disabled={submitting} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+              <CheckCircle className="w-4 h-4 mr-2" />
+              {submitting ? "Menyimpan..." : "Konfirmasi Selesai"}
             </Button>
           </div>
         </DialogContent>
@@ -1508,7 +1799,7 @@ const LeaveProposals = () => {
 };
 
 // ─── ProposalCard ───────────────────────────────────────────────────────────
-function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint, onEdit, onDelete, onCreateLetter }) {
+function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove, onReject, onForward, onPrint, onEdit, onDelete, onCreateLetter, onMarkComplete }) {
   const [documents, setDocuments] = React.useState([]);
   const [loadingDocs, setLoadingDocs] = React.useState(false);
   const [showDetails, setShowDetails] = React.useState(false);
@@ -1516,11 +1807,12 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
   const isEmployeeApprovalTab = isAdminUnit && activeTab === "employee-approvals";
   const isCreateLettersTab = isAdminUnit && activeTab === "create-letters";
   const canAct = isEmployeeApprovalTab && proposal.status === "pending";
-  const canPrint = isEmployeeApprovalTab && (proposal.status === "awaiting_letter" || proposal.status === "approved");
+  const canPrint = (isEmployeeApprovalTab || isCreateLettersTab) && (proposal.status === "awaiting_letter" || proposal.status === "approved" || proposal.status === "letter_issued" || proposal.status === "completed");
   const canCreateLetter = isCreateLettersTab && canGenerateLetter(proposal.status);
+  const canMarkComplete = isAdminUnit && (proposal.status === "awaiting_letter" || proposal.status === "letter_issued" || proposal.status === "approved");
   const canEditOrDelete = isEmployee && proposal.status === "rejected";
   const canDeleteByAdminUnit =
-    isAdminUnit && ["pending", "rejected", "processed"].includes(proposal.status);
+    isAdminUnit && ["pending", "rejected", "processed", "completed", "letter_issued"].includes(proposal.status);
   const canDelete = canEditOrDelete || canDeleteByAdminUnit;
 
   // Fetch documents for proposal items
@@ -1587,7 +1879,14 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
               <strong>Alasan Ditolak:</strong> {proposal.rejection_reason}
             </div>
           )}
-          {(proposal.status === 'awaiting_letter' || proposal.status === 'approved') && proposal.letter_number && (
+          {proposal.status === 'completed' && (
+            <div className="p-2 bg-emerald-950/30 border border-emerald-700/40 rounded text-sm text-emerald-300">
+              <strong>Usulan Selesai:</strong> {proposal.letter_number ? `No. Surat: ${proposal.letter_number}` : 'Surat cuti telah diproses'}
+              {proposal.letter_date && ` — ${format(new Date(proposal.letter_date), "dd MMMM yyyy", { locale: id })}`}
+              {proposal.completed_at && ` (Diselesaikan ${format(new Date(proposal.completed_at), "dd MMM yyyy", { locale: id })})`}
+            </div>
+          )}
+          {(proposal.status === 'awaiting_letter' || proposal.status === 'approved' || proposal.status === 'letter_issued') && proposal.letter_number && (
             <div className="p-2 bg-green-950/30 border border-green-700/40 rounded text-sm text-green-400">
               <strong>Nomor Surat:</strong> {proposal.letter_number}
               {proposal.letter_date && ` — ${format(new Date(proposal.letter_date), "dd MMMM yyyy", { locale: id })}`}
@@ -1601,8 +1900,17 @@ function ProposalCard({ proposal, isEmployee, isAdminUnit, activeTab, onApprove,
         </div>
 
         {/* Action buttons */}
-        {(canAct || canPrint || canEditOrDelete || canCreateLetter || canDelete) && (
-          <div className="flex items-center gap-2">
+        {(canAct || canPrint || canEditOrDelete || canCreateLetter || canDelete || (canMarkComplete && onMarkComplete)) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {canMarkComplete && onMarkComplete && (
+              <Button
+                size="sm"
+                onClick={() => onMarkComplete(proposal)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                <CheckCircle className="w-4 h-4 mr-1" /> Tandai Selesai
+              </Button>
+            )}
             {canPrint && (
               <Button size="sm" variant="outline" onClick={() => onPrint(proposal)}
                 className="border-slate-600 text-slate-300 hover:bg-slate-700">
